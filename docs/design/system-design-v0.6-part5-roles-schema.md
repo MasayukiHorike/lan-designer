@@ -1,0 +1,461 @@
+# 通信設計支援システム 全体設計書 v0.6
+## Part5: ロール定義・IndexedDBスキーマ
+
+---
+
+## 15. ロール定義
+
+| ロール | 主な権限 | 検証フェーズ |
+|-------|---------|------------|
+| ECU設計者 | 申請書作成・Excel登録・引き戻し・自担当ECU Port参照 | ロール切替で再現 |
+| ECU承認者 | 一次承認・差し戻し・参照全般 | ロール切替で再現 |
+| LAN設計者 | LAN構成管理・サブセット管理・断面確定・全出力・アクセス権管理 | ロール切替で再現 |
+| LAN承認者 | 二次承認・却下・in_review_2nd時編集・参照全般 | ロール切替で再現 |
+
+---
+
+## 16. IndexedDBスキーマ
+
+### 設計方針
+```
+・各ドキュメントは_idをキーとしたJSONオブジェクト
+・ArangoDBのコレクション構造に寄せた設計
+・代表プロパティのみ定義・詳細は実装時に拡張
+・共通メタデータを全ドキュメントに付与
+```
+
+### 共通メタデータ（全コレクション共通）
+```json
+{
+  "_id": "コレクション名/UUID",
+  "createdAt": "2024-01-10T00:00:00Z",
+  "createdBy": "ロールID",
+  "updatedAt": "2024-01-10T00:00:00Z",
+  "updatedBy": "ロールID",
+  "deleted": false
+}
+```
+
+### 1. projects
+```json
+{
+  "_id": "projects/UUID",
+  "name": "プロジェクト名",
+  "description": "説明",
+  "status": "active"
+}
+```
+
+### 2. variants（サブセット定義）
+```json
+{
+  "_id": "variants/UUID",
+  "projectId": "projects/UUID",
+  "generation": "Gen1",
+  "powerTrain": "HEV",
+  "name": "Gen1_HEV",
+  "ecuConnectors": [
+    {
+      "ecuId": "ecus/UUID-A",
+      "connectors": [
+        { "connectorId": "CONN_A1", "busId": "buses/UUID-1" },
+        { "connectorId": "CONN_A2", "busId": "buses/UUID-2" }
+      ]
+    },
+    {
+      "ecuId": "ecus/UUID-B",
+      "connectors": [
+        { "connectorId": "CONN_B1", "busId": "buses/UUID-1" }
+      ]
+    }
+  ],
+  "busVariantIds": ["buses/UUID-1", "buses/UUID-2"]
+}
+```
+
+### 3. ecus
+```json
+{
+  "_id": "ecus/UUID",
+  "projectId": "projects/UUID",
+  "name": "ECU-A",
+  "variantNo": "00",
+  "shortName": "ECUA",
+  "department": "部署名",
+  "connectors": [
+    {
+      "connectorId": "CONN_A1",
+      "name": "Connector_A1",
+      "busConnections": [
+        {
+          "busId": "buses/UUID-1",
+          "variantIds": ["variants/UUID-Gen1-HEV"]
+        }
+      ],
+      "framePorts": [
+        {
+          "framePortId": "FP_A1_001",
+          "frameId": "frames/UUID",
+          "direction": "P-Port",
+          "e2eEnabled": true,
+          "secocEnabled": true,
+          "timeoutMs": null
+        },
+        {
+          "framePortId": "FP_A1_002",
+          "frameId": "frames/UUID-2",
+          "direction": "R-Port",
+          "e2eEnabled": true,
+          "secocEnabled": false,
+          "timeoutMs": 100
+        }
+      ],
+      "signalPorts": [
+        {
+          "signalPortId": "SP_A1_001",
+          "signalId": "signals/UUID",
+          "direction": "P-Port",
+          "e2eEnabled": true,
+          "secocEnabled": true
+        },
+        {
+          "signalPortId": "SP_A1_002",
+          "signalId": "signals/UUID-2",
+          "direction": "R-Port",
+          "e2eEnabled": false,
+          "secocEnabled": false
+        }
+      ]
+    }
+  ],
+  "status": "published",
+  "deleted": false
+}
+```
+
+### 4. buses
+```json
+{
+  "_id": "buses/UUID",
+  "projectId": "projects/UUID",
+  "name": "CAN-Bus1",
+  "variantNo": "00",
+  "protocol": "CAN-FD",
+  "baudRate": 500000,
+  "dataBaudRate": 2000000,
+  "status": "published",
+  "deleted": false
+}
+```
+
+※CANの場合はdataBaudRateはnull
+
+### 5. frames
+```json
+{
+  "_id": "frames/UUID",
+  "projectId": "projects/UUID",
+  "applicationId": "applications/UUID",
+  "name": "Frame_001",
+  "variantNo": "00",
+  "description": "フレーム説明",
+  "protocol": "CAN-FD",
+  "canId": "0x100",
+  "dlc": 8,
+  "cycleTime": 10,
+  "powerSource": ["+B", "IG"],
+  "eventFlag": true,
+  "versionNo": "01-a",
+  "e2e": {
+    "enabled": true,
+    "profile": "P02",
+    "dataId": "0x0001",
+    "reservedBits": 24,
+    "reservedStartBit": 0
+  },
+  "secoc": {
+    "enabled": true,
+    "fvMethod": "トランケートFV",
+    "secocId": "0x0001",
+    "reservedBits": 32,
+    "reservedStartBit": 32
+  },
+  "status": "published",
+  "deleted": false
+}
+```
+
+### 6. signals
+```json
+{
+  "_id": "signals/UUID",
+  "projectId": "projects/UUID",
+  "frameId": "frames/UUID",
+  "applicationId": "applications/UUID",
+  "name": "Signal_001",
+  "variantNo": "00",
+  "description": "シグナル説明",
+  "bitPosition": 0,
+  "bitLength": 8,
+  "endian": "Motorola",
+  "eventCondition": "W",
+  "unit": "km/h",
+  "resolution": 0.1,
+  "initialValue": 0,
+  "failValue": 255,
+  "versionNo": "01-a",
+  "status": "published",
+  "deleted": false
+}
+```
+
+### 7. versionHistories
+```json
+{
+  "_id": "versionHistories/UUID",
+  "projectId": "projects/UUID",
+  "targetType": "frame",
+  "targetId": "frames/UUID",
+  "versionNo": "00-a",
+  "applicationId": "applications/UUID",
+  "changedAt": "2024-01-10T00:00:00Z",
+  "snapshot": {}
+}
+```
+
+### 8. applications
+```json
+{
+  "_id": "applications/UUID",
+  "projectId": "projects/UUID",
+  "applicationNo": "APP-EngineECU-20240110-01",
+  "applicantEcuName": "EngineECU",
+  "title": "件名",
+  "description": "変更概要",
+  "comment": "コメント",
+  "status": "in_review_1st",
+  "applicantId": "ロールID",
+  "approvers": {
+    "firstStage": [
+      {
+        "ecuName": "ECU-A",
+        "approvers": [
+          { "email": "tanaka@example.com", "status": "approved", "actionAt": "2024-01-10T00:00:00Z" },
+          { "email": "suzuki@example.com", "status": "pending" }
+        ]
+      },
+      {
+        "ecuName": "ECU-B",
+        "approvers": [
+          { "email": "sato@example.com", "status": "pending" }
+        ]
+      }
+    ],
+    "secondStage": [
+      { "email": "yamamoto@example.com", "status": "pending" },
+      { "email": "ito@example.com", "status": "pending" }
+    ]
+  },
+  "importFiles": [
+    {
+      "ecuName": "ECU-A",
+      "communicationDataFileRef": "ref_001",
+      "communicationDataFileBlob": "Blob",
+      "gwExceptionFileRef": "ref_002",
+      "gwExceptionFileBlob": "Blob"
+    },
+    {
+      "ecuName": "ECU-B",
+      "communicationDataFileRef": "ref_003",
+      "communicationDataFileBlob": "Blob"
+    }
+  ],
+  "editHistories": [
+    {
+      "editedAt": "2024-01-10T00:00:00Z",
+      "editedBy": "ロールID",
+      "stage": "in_review_2nd",
+      "method": "excel",
+      "changes": []
+    }
+  ],
+  "checkResults": {
+    "level1": {
+      "status": "error",
+      "errors": [],
+      "warnings": []
+    },
+    "level2": {
+      "Gen1_HEV": { "status": "ok", "errors": [], "warnings": [] },
+      "Gen1_EV": { "status": "error", "errors": [], "warnings": [] }
+    }
+  }
+}
+```
+
+### 9. approvals
+```json
+{
+  "_id": "approvals/UUID",
+  "applicationId": "applications/UUID",
+  "stage": "1st",
+  "ecuName": "ECU-A",
+  "approverId": "tanaka@example.com",
+  "action": "approved",
+  "comment": "承認コメント",
+  "actionAt": "2024-01-10T00:00:00Z"
+}
+```
+
+### 10. gwRoutes
+```json
+{
+  "_id": "gwRoutes/UUID",
+  "projectId": "projects/UUID",
+  "frameId": "frames/UUID",
+  "frameVariantNo": "00",
+  "sourceBusId": "buses/UUID",
+  "targetBusId": "buses/UUID",
+  "gwVariantNo": "00",
+  "viaGwIds": ["ecus/UUID-GW1"],
+  "isException": false,
+  "applicationId": "applications/UUID",
+  "status": "published",
+  "deleted": false
+}
+```
+
+### 11. snapshots
+```json
+{
+  "_id": "snapshots/UUID",
+  "projectId": "projects/UUID",
+  "sequenceNo": 5,
+  "snapshotName": "v1.5",
+  "confirmedAt": "2024-01-10T00:00:00Z",
+  "confirmedBy": "ロールID",
+  "ecuIds": ["ecus/UUID-A", "ecus/UUID-B"],
+  "busIds": ["buses/UUID-1"],
+  "frameIds": ["frames/UUID"],
+  "signalIds": ["signals/UUID"],
+  "gwRouteIds": ["gwRoutes/UUID"]
+}
+```
+
+### 12. changelogs
+```json
+{
+  "_id": "changelogs/UUID",
+  "projectId": "projects/UUID",
+  "snapshotId": "snapshots/UUID",
+  "previousSnapshotId": "snapshots/UUID",
+  "changes": [
+    {
+      "type": "added",
+      "targetType": "frame",
+      "targetId": "frames/UUID",
+      "ecuId": "ecus/UUID-A",
+      "before": {},
+      "after": {}
+    },
+    {
+      "type": "modified",
+      "targetType": "signal",
+      "targetId": "signals/UUID",
+      "ecuId": "ecus/UUID-A",
+      "before": {},
+      "after": {}
+    },
+    {
+      "type": "deleted",
+      "targetType": "frame",
+      "targetId": "frames/UUID",
+      "ecuId": "ecus/UUID-A",
+      "before": {},
+      "after": {}
+    }
+  ]
+}
+```
+
+### 13. subsetHistories（サブセット変更履歴）
+```json
+{
+  "_id": "subsetHistories/UUID",
+  "projectId": "projects/UUID",
+  "variantId": "variants/UUID",
+  "changedAt": "2024-01-10T00:00:00Z",
+  "changedBy": "ロールID",
+  "before": {},
+  "after": {}
+}
+```
+
+### 14. accessControls
+```json
+{
+  "_id": "accessControls/UUID",
+  "projectId": "projects/UUID",
+  "screenId": "P20",
+  "screenName": "申請書管理",
+  "permissions": {
+    "ECU設計者": "full",
+    "ECU承認者": "full",
+    "LAN設計者": "full",
+    "LAN承認者": "full"
+  },
+  "updatedAt": "2024-01-10T00:00:00Z",
+  "updatedBy": "ロールID"
+}
+```
+
+※permissions値: "full"=○ / "readonly"=△ / "none"=✗
+
+---
+
+### コレクション関連図
+```
+projects
+　├── variants（サブセット定義）
+　│    └── ecuConnectors → ecus, buses（有効接続の正）
+　├── ecus
+　│    └── connectors（embedded）
+　│         ├── busConnections → buses, variants
+　│         ├── framePorts    → frames
+　│         └── signalPorts   → signals
+　├── buses
+　├── frames
+　│    └── signals
+　├── versionHistories → frames / signals
+　├── gwRoutes → frames, buses
+　├── applications
+　│    └── approvals
+　├── snapshots
+　│    ├── ecus / buses / frames / signals / gwRoutes
+　├── changelogs
+　│    ├── snapshots（current）
+　│    └── snapshots（previous）
+　├── subsetHistories → variants
+　└── accessControls
+```
+
+### ステータス適用コレクション一覧
+```
+ステータス管理対象（published/approved/in_review等）
+　├── ecus
+　├── buses
+　├── frames
+　├── signals
+　├── gwRoutes
+　└── applications
+
+ステータス管理対象外（マスタ・履歴系・即時公開）
+　├── projects
+　├── variants      ※登録＝即時公開
+　├── approvals
+　├── versionHistories
+　├── snapshots
+　├── changelogs
+　├── subsetHistories
+　└── accessControls
+```
