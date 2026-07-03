@@ -1,6 +1,8 @@
 // DBスキーマ全型定義
 // 参照: docs/design/system-design-v0.6-part5-roles-schema.md
 
+import type { CheckResult } from './check';
+
 export type Role = 'ECU設計者' | 'ECU承認者' | 'LAN設計者' | 'LAN承認者';
 
 export type Status =
@@ -94,6 +96,9 @@ export interface Ecu extends BaseDocument {
   variantNo: string;
   shortName: string;
   department: string;
+  /** 物理構成ExcelのSheet4（GWリスト）由来。GW-ECUでない場合は空配列 */
+  gwBusIds: string[];
+  remarks: string;
   connectors: EcuConnector[];
   status: Status;
 }
@@ -106,6 +111,7 @@ export interface Bus extends BaseDocument {
   protocol: Protocol;
   baudRate: number;
   dataBaudRate: number | null;
+  remarks: string;
   status: Status;
 }
 
@@ -208,19 +214,6 @@ export interface EditHistoryEntry {
   stage: Status;
   method: 'excel' | 'manual';
   changes: unknown[];
-}
-
-export interface CheckIssue {
-  code: string;
-  message: string;
-  targetType?: string;
-  targetId?: string;
-}
-
-export interface CheckResult {
-  status: 'ok' | 'error' | 'warning';
-  errors: CheckIssue[];
-  warnings: CheckIssue[];
 }
 
 export interface ApplicationCheckResults {
