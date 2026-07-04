@@ -26,12 +26,22 @@ export interface TreeEcuNode {
   frames: TreeFrameNode[];
 }
 
+export interface SnapshotFilter {
+  frameIds: Set<string>;
+  signalIds: Set<string>;
+}
+
 /**
  * ECU（バリを束ねた単位）→Frame→Signal のツリー構造を構築する（P30左ペイン用）。
  * ・ECUはバリナンバー単位ではなく名前単位で束ねる（バリ単位の送受信はP40 ECU Port参照で扱う）
  * ・Frameは送信元（P-Port）のECUの配下にのみ表示する。受信のみのECUは配下にFrame/Signalを持たない
+ * ・snapshotFilterを渡すと、その断面に含まれるFrame/Signalのみに絞り込む（過去断面表示用）
  */
-export async function buildFrameSignalTree(projectId: string, includeDeleted: boolean): Promise<TreeEcuNode[]> {
+export async function buildFrameSignalTree(
+  projectId: string,
+  includeDeleted: boolean,
+  snapshotFilter?: SnapshotFilter,
+): Promise<TreeEcuNode[]> {
   const ecus = await ecuRepo.findByProjectId(projectId);
   const frameCache = new Map<string, Frame | undefined>();
   const signalCache = new Map<string, TreeSignalNode[]>();
@@ -58,6 +68,7 @@ export async function buildFrameSignalTree(projectId: string, includeDeleted: bo
 
     const frameNodes: TreeFrameNode[] = [];
     for (const frameId of txFrameIds) {
+      if (snapshotFilter && !snapshotFilter.frameIds.has(frameId)) continue;
       if (!frameCache.has(frameId)) {
         frameCache.set(frameId, await frameRepo.findById(frameId));
       }
@@ -73,6 +84,7 @@ export async function buildFrameSignalTree(projectId: string, includeDeleted: bo
           frameId,
           signals
             .filter((s) => includeDeleted || !s.deleted)
+            .filter((s) => !snapshotFilter || snapshotFilter.signalIds.has(s._id))
             .map((s) => ({ id: s._id, name: s.name, deleted: s.deleted })),
         );
       }

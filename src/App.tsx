@@ -15,6 +15,8 @@ import { P31_SubsetView } from './pages/P31_SubsetView/P31_SubsetView';
 import { P33_FrameDetail } from './pages/P33_FrameDetail/P33_FrameDetail';
 import { P34_SignalDetail } from './pages/P34_SignalDetail/P34_SignalDetail';
 import { P40_EcuPort } from './pages/P40_EcuPort/P40_EcuPort';
+import { P50_Snapshots } from './pages/P50_Snapshots/P50_Snapshots';
+import { P51_Changelogs } from './pages/P51_Changelogs/P51_Changelogs';
 import { NotImplemented } from './pages/NotImplemented';
 
 export function App() {
@@ -38,6 +40,8 @@ export function App() {
                 <Route path="/frame-signal" element={<P30_FrameSignal />} />
                 <Route path="/frame-signal/subset" element={<P31_SubsetView />} />
                 <Route path="/ecu-port" element={<P40_EcuPort />} />
+                <Route path="/snapshots" element={<P50_Snapshots />} />
+                <Route path="/changelogs" element={<P51_Changelogs />} />
                 <Route path="*" element={<NotImplemented />} />
               </Route>
             </Route>
