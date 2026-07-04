@@ -9,7 +9,7 @@
 |-------|---------|------------|
 | ECU設計者 | 申請書作成・Excel登録・引き戻し・自担当ECU Port参照 | ロール切替で再現 |
 | ECU承認者 | 一次承認・差し戻し・参照全般 | ロール切替で再現 |
-| LAN設計者 | LAN構成管理・サブセット管理・断面確定・全出力・アクセス権管理 | ロール切替で再現 |
+| LAN設計者 | LAN構成管理・サブセット管理・断面確定・全出力・アクセス権管理・プロジェクト管理 | ロール切替で再現 |
 | LAN承認者 | 二次承認・却下・in_review_2nd時編集・参照全般 | ロール切替で再現 |
 
 ---
@@ -42,9 +42,16 @@
   "_id": "projects/UUID",
   "name": "プロジェクト名",
   "description": "説明",
+  "themeColor": "#3B82F6",
   "status": "active"
 }
 ```
+
+※themeColorはPhase2-1（P02プロジェクト管理・Issue #1対応）で追加。
+　ヘッダーバー・サイドメニュー等のUIに反映し、
+　複数プロジェクトを切り替える際に作業中プロジェクトを
+　視覚的に判別できるようにするためのフィールド。
+　カラーコード（#RRGGBB形式）で保持する。
 
 ### 2. variants（サブセット定義）
 ```json
@@ -424,7 +431,7 @@
 
 ### コレクション関連図
 ```
-projects
+projects（themeColorを保持・Phase2-1）
 　├── variants（サブセット定義）
 　│    └── ecuConnectors → ecus, buses（有効接続の正）
 　├── ecus
@@ -467,4 +474,24 @@ projects
 　├── changelogs
 　├── subsetHistories
 　└── accessControls
+```
+
+### プロジェクト削除・リセット時のカスケード処理（Phase2-1で新設）
+```
+【対象】P02プロジェクト管理画面からの削除・リセット操作
+
+【リセット】対象projectIdに紐づく以下コレクションの
+　　　　　　レコードを全て物理削除。projectsレコード自体は保持。
+　ecus / buses / frames / signals / applications / approvals /
+　gwRoutes / snapshots / changelogs / versionHistories /
+　subsetHistories / variants / accessControls
+
+【削除】リセットの全処理に加え、projectsレコード自体も物理削除。
+
+【通常運用時の論理削除ルールとの関係】
+　通常運用時（P10行削除・P11サブセット削除等）は
+　引き続き論理削除（deletedフラグ）を用いる。
+　本カスケード処理は開発・検証用のプロジェクト単位初期化に
+　限定した例外的な物理削除であり、既存の論理削除ルールを
+　変更するものではない。
 ```
