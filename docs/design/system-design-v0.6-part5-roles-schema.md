@@ -256,6 +256,8 @@
       { "email": "ito@example.com", "status": "pending" }
     ]
   },
+  "firstStageTurn": 1,
+  "secondStageTurn": 0,
   "importFiles": [
     {
       "ecuName": "ECU-A",
@@ -292,6 +294,13 @@
   }
 }
 ```
+
+※firstStageTurn/secondStageTurnは順番制承認（Part3 §8参照）における
+　現在の対応順インデックス。一次承認者は「ECU登録順→各ECU内の登録順」
+　でフラットに並べた待ち行列の何番目が対応中かを表す
+　（上記例ではtanaka@example.comが対応済＝index0のためfirstStageTurn:1、
+　　suzuki@example.comが現在の対応順）。二次承認者も同様に登録順の
+　待ち行列とし、secondStageTurnで管理する。
 
 ### 9. approvals
 ```json
