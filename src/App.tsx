@@ -7,6 +7,9 @@ import { P00_RoleSwitch } from './pages/P00_RoleSwitch/P00_RoleSwitch';
 import { P01_Home } from './pages/P01_Home/P01_Home';
 import { P10_LanConfig } from './pages/P10_LanConfig/P10_LanConfig';
 import { P11_Subsets } from './pages/P11_Subsets/P11_Subsets';
+import { P20_Applications } from './pages/P20_Applications/P20_Applications';
+import { P21_Create } from './pages/P21_Create/P21_Create';
+import { P22_Detail } from './pages/P22_Detail/P22_Detail';
 import { NotImplemented } from './pages/NotImplemented';
 
 export function App() {
@@ -21,6 +24,10 @@ export function App() {
                 <Route path="/" element={<P01_Home />} />
                 <Route path="/lan-config" element={<P10_LanConfig />} />
                 <Route path="/subsets" element={<P11_Subsets />} />
+                <Route path="/applications" element={<P20_Applications />} />
+                <Route path="/applications/new" element={<P21_Create />} />
+                <Route path="/applications/:id" element={<P22_Detail />} />
+                <Route path="/applications/:id/edit" element={<P21_Create />} />
                 <Route path="*" element={<NotImplemented />} />
               </Route>
             </Route>

@@ -50,3 +50,83 @@ export interface PhysicalConfigParseResult {
   topology: ParsedTopologyEntry[];
   gwRows: ParsedGwRow[];
 }
+
+// ── 通信データExcel ──────────────────────────
+// 参照: docs/design/system-design-v0.6-part2-excel-format.md §② 通信データExcel
+
+export type ElementCommand = '追加' | '変更(verup)' | '削除' | '';
+export type PortCommand = '追加' | '変更(verup)' | '削除' | '';
+export type TrValue = 'T' | 'R' | '';
+
+/** Dエリア：ECU×コネクター単位のT/R指定（F行・S行共通） */
+export interface ParsedTrCell {
+  ecuName: string;
+  ecuVariantNo: string;
+  connectorId: string;
+  tr: TrValue;
+  e2eUsed: TrValue;
+  secocUsed: TrValue;
+  /** 途絶時間（ms）。R以外・S行では常にnull */
+  timeoutMs: number | null;
+  colNo: number;
+}
+
+export interface ParsedFrameRow {
+  rowNo: number;
+  elementCommand: ElementCommand;
+  portCommand: PortCommand;
+  name: string;
+  variantNo: string;
+  description: string;
+  protocol: 'CAN' | 'CAN-FD';
+  canId: string;
+  dlc: number;
+  cycleTime: number;
+  powerSource: string[];
+  eventFlag: boolean;
+  versionNo: string;
+  e2eEnabled: boolean;
+  e2eProfile: string;
+  e2eDataId: string;
+  secocEnabled: boolean;
+  secocFvMethod: 'truncatedFV' | 'fullFV' | '';
+  secocId: string;
+  trCells: ParsedTrCell[];
+}
+
+export interface ParsedSignalRow {
+  rowNo: number;
+  elementCommand: ElementCommand;
+  portCommand: PortCommand;
+  name: string;
+  variantNo: string;
+  description: string;
+  bitPosition: number;
+  bitLength: number;
+  endian: 'Motorola' | 'Intel';
+  eventCondition: string;
+  unit: string;
+  resolution: number;
+  initialValue: number;
+  failValue: number;
+  versionNo: string;
+  trCells: ParsedTrCell[];
+}
+
+export interface ParsedFrameGroup {
+  frame: ParsedFrameRow;
+  signals: ParsedSignalRow[];
+}
+
+export interface ConnectorGroup {
+  ecuName: string;
+  ecuVariantNo: string;
+  connectorId: string;
+  colNo: number;
+  valid: boolean;
+}
+
+export interface CommunicationDataParseResult {
+  frameGroups: ParsedFrameGroup[];
+  connectorGroups: ConnectorGroup[];
+}

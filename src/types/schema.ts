@@ -231,6 +231,10 @@ export interface Application extends BaseDocument {
   status: Status;
   applicantId: string;
   approvers: ApplicationApprovers;
+  /** 現在の対応順インデックス（一次承認者を登録順に並べたフラットリスト基準・順番制回覧用） */
+  firstStageTurn: number;
+  /** 現在の対応順インデックス（二次承認者リスト基準・順番制回覧用） */
+  secondStageTurn: number;
   importFiles: ImportFile[];
   editHistories: EditHistoryEntry[];
   checkResults: ApplicationCheckResults;
