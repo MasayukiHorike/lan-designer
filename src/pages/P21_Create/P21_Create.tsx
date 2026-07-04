@@ -18,6 +18,7 @@ import {
 } from '../../services/ApplicationService';
 import { EmailListInput } from '../../components/EmailListInput';
 import { ErrorList } from '../../components/ErrorList/ErrorList';
+import { Level2Results } from '../../components/Level2Results';
 import type { Application, Ecu } from '../../types/schema';
 import type { CommunicationDataCheckContext } from '../../services/check/Level1CheckService';
 
@@ -105,7 +106,7 @@ export function P21_Create() {
     const updated =
       fileType === 'communicationData'
         ? await registerCommunicationDataFile(application, ecuName, file, context, role)
-        : await registerGwExceptionFile(application, ecuName, file, role);
+        : await registerGwExceptionFile(application, ecuName, file, context, role);
     setApplication(updated);
   };
 
@@ -313,7 +314,9 @@ export function P21_Create() {
           Level1：{application.checkResults.level1.status === 'ok' ? '○ エラーなし' : '✗ エラーあり'}
         </p>
         <ErrorList result={application.checkResults.level1} />
-        <p className="mt-2 text-sm text-slate-400">Level2（サブセット単位）：Phase1-4で実装予定</p>
+        <div className="mt-2">
+          <Level2Results level2={application.checkResults.level2} />
+        </div>
       </div>
 
       {submitBlockers.length > 0 && (

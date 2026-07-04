@@ -1,18 +1,31 @@
 import { ApplicationRepository } from '../repositories/ApplicationRepository';
 import { ApprovalRepository } from '../repositories/ApprovalRepository';
+import { FrameRepository } from '../repositories/FrameRepository';
+import { SignalRepository } from '../repositories/SignalRepository';
+import { GwRouteRepository } from '../repositories/GwRouteRepository';
 import { newId } from '../utils/uuid';
 import { nowIso } from '../utils/dateUtils';
 import { generateApplicationNo } from '../utils/applicationNo';
 import { parseCommunicationDataWorkbook } from './excel/CommunicationDataImportService';
+import { parseGwExceptionWorkbook } from './excel/GwExceptionImportService';
 import {
   checkCommunicationData,
+  checkGwException,
   type CommunicationDataCheckContext,
+  type GwExceptionCheckContext,
 } from './check/Level1CheckService';
+import { runLevel2Checks } from './check/Level2CheckService';
+import { reflectCommunicationData } from './CommunicationDataReflectionService';
+import { applyGwExceptions } from './GwRouteService';
 import { okResult, type CheckIssue, type CheckResult } from '../types/check';
-import type { Application, ApplicationApprovers, ApproverEntry, ImportFile } from '../types/schema';
+import type { Application, ApplicationApprovers, ApproverEntry, ImportFile, Status } from '../types/schema';
+import type { CommunicationDataParseResult } from '../types/excel';
 
 const applicationRepo = new ApplicationRepository();
 const approvalRepo = new ApprovalRepository();
+const frameRepo = new FrameRepository();
+const signalRepo = new SignalRepository();
+const gwRouteRepo = new GwRouteRepository();
 
 export async function issueApplicationNo(projectId: string, ecuName: string): Promise<string> {
   const dateStr = nowIso().slice(0, 10).replace(/-/g, '');
@@ -120,17 +133,46 @@ function mergeCheckResults(results: { ecuName: string; result: CheckResult }[]):
   };
 }
 
-/** 登録済み全ECUの通信データExcelを再パース・再チェックし、Level1結果を再計算する */
+/** 登録済み通信データExcelを全てパースし、フレームキー（name_variantNo）集合を作る */
+async function buildFrameKeys(
+  importFiles: ImportFile[],
+  ecus: CommunicationDataCheckContext['ecus'],
+): Promise<{ keys: Set<string>; parsedByEcu: Map<string, CommunicationDataParseResult> }> {
+  const keys = new Set<string>();
+  const parsedByEcu = new Map<string, CommunicationDataParseResult>();
+  for (const file of importFiles) {
+    if (!file.communicationDataFileBlob) continue;
+    const parsed = await parseCommunicationDataWorkbook(file.communicationDataFileBlob, ecus);
+    parsedByEcu.set(file.ecuName, parsed);
+    for (const g of parsed.frameGroups) {
+      if (g.frame.elementCommand) keys.add(`${g.frame.name}_${g.frame.variantNo}`);
+    }
+  }
+  return { keys, parsedByEcu };
+}
+
+/** 登録済み全ファイル（通信データ・GW例外指定）を再パース・再チェックし、Level1結果を再計算する */
 async function recomputeLevel1(
   application: Application,
   context: CommunicationDataCheckContext,
 ): Promise<CheckResult> {
+  const { keys: frameKeys, parsedByEcu } = await buildFrameKeys(application.importFiles, context.ecus);
+
   const perEcuResults: { ecuName: string; result: CheckResult }[] = [];
-  for (const file of application.importFiles) {
-    if (!file.communicationDataFileBlob) continue;
-    const parsed = await parseCommunicationDataWorkbook(file.communicationDataFileBlob, context.ecus);
-    perEcuResults.push({ ecuName: file.ecuName, result: checkCommunicationData(parsed, context) });
+  for (const [ecuName, parsed] of parsedByEcu) {
+    perEcuResults.push({ ecuName, result: checkCommunicationData(parsed, context) });
   }
+
+  const gwFiles = application.importFiles.filter((f) => f.gwExceptionFileBlob);
+  if (gwFiles.length > 0) {
+    const existingRoutes = await gwRouteRepo.findByProjectId(application.projectId);
+    const gwContext: GwExceptionCheckContext = { frameKeys, ecus: context.ecus, existingRoutes };
+    for (const file of gwFiles) {
+      const parsed = await parseGwExceptionWorkbook(file.gwExceptionFileBlob!, context.buses, context.ecus);
+      perEcuResults.push({ ecuName: `${file.ecuName}/GW例外指定`, result: checkGwException(parsed, gwContext) });
+    }
+  }
+
   return mergeCheckResults(perEcuResults);
 }
 
@@ -147,9 +189,21 @@ export async function registerCommunicationDataFile(
   });
   const updated = { ...application, importFiles };
   const level1 = await recomputeLevel1(updated, context);
+
+  if (level1.status !== 'error') {
+    const parsed = await parseCommunicationDataWorkbook(file, context.ecus);
+    await reflectCommunicationData(parsed, {
+      projectId: application.projectId,
+      applicationId: application._id,
+      status: application.status,
+      actorId,
+    });
+  }
+
+  const level2 = await runLevel2Checks(application.projectId);
   return applicationRepo.update(
     application._id,
-    { importFiles, checkResults: { ...application.checkResults, level1 } },
+    { importFiles, checkResults: { level1, level2 } },
     actorId,
   );
 }
@@ -158,13 +212,30 @@ export async function registerGwExceptionFile(
   application: Application,
   ecuName: string,
   file: File,
+  context: CommunicationDataCheckContext,
   actorId: string,
 ): Promise<Application> {
   const importFiles = upsertImportFile(application.importFiles, ecuName, {
     gwExceptionFileRef: newId('files'),
     gwExceptionFileBlob: file,
   });
-  return applicationRepo.update(application._id, { importFiles }, actorId);
+  const updated = { ...application, importFiles };
+  const level1 = await recomputeLevel1(updated, context);
+
+  const { keys: frameKeys } = await buildFrameKeys(importFiles, context.ecus);
+  const existingRoutes = await gwRouteRepo.findByProjectId(application.projectId);
+  const parsed = await parseGwExceptionWorkbook(file, context.buses, context.ecus);
+  const ownCheck = checkGwException(parsed, { frameKeys, ecus: context.ecus, existingRoutes });
+  if (ownCheck.status !== 'error') {
+    await applyGwExceptions(parsed, application.projectId, application._id, application.status, actorId);
+  }
+
+  const level2 = await runLevel2Checks(application.projectId);
+  return applicationRepo.update(
+    application._id,
+    { importFiles, checkResults: { level1, level2 } },
+    actorId,
+  );
 }
 
 export async function removeFile(
@@ -184,11 +255,33 @@ export async function removeFile(
   );
   const updated = { ...application, importFiles };
   const level1 = await recomputeLevel1(updated, context);
+  const level2 = await runLevel2Checks(application.projectId);
+  // 注：既にDB反映済みのframes/signals/gwRoutesはファイル削除だけでは取り消されない
+  // （申請書のドラフト編集中の削除は現時点では反映済みデータに影響しない既知の制限）
   return applicationRepo.update(
     application._id,
-    { importFiles, checkResults: { ...application.checkResults, level1 } },
+    { importFiles, checkResults: { level1, level2 } },
     actorId,
   );
+}
+
+/**
+ * この申請書に紐づくframes/signals/gwRoutes（このapplicationIdで反映されたもの）のステータスを
+ * 申請書のステータス遷移に合わせて同期する（Part3 Step2「DB取込（draft）」以降の同期方針）。
+ */
+async function syncElementStatuses(application: Application, newStatus: Status, actorId: string): Promise<void> {
+  const [frames, signals, allRoutes] = await Promise.all([
+    frameRepo.findByApplicationId(application._id),
+    signalRepo.findByApplicationId(application._id),
+    gwRouteRepo.findByProjectId(application.projectId),
+  ]);
+  const routes = allRoutes.filter((r) => r.applicationId === application._id);
+
+  await Promise.all([
+    ...frames.filter((f) => !f.deleted).map((f) => frameRepo.update(f._id, { status: newStatus }, actorId)),
+    ...signals.filter((s) => !s.deleted).map((s) => signalRepo.update(s._id, { status: newStatus }, actorId)),
+    ...routes.filter((r) => !r.deleted).map((r) => gwRouteRepo.update(r._id, { status: newStatus }, actorId)),
+  ]);
 }
 
 /** 申請提出をブロックしている理由を人が読める形で返す（空配列なら提出可能） */
@@ -231,6 +324,7 @@ export async function submitApplication(application: Application, actorId: strin
   if (blockers.length > 0) {
     throw new Error(`申請提出の条件を満たしていません: ${blockers.join(' / ')}`);
   }
+  await syncElementStatuses(application, 'in_review_1st', actorId);
   return applicationRepo.update(application._id, { status: 'in_review_1st' }, actorId);
 }
 
@@ -267,6 +361,7 @@ export async function withdrawApplication(application: Application, actorId: str
     updatedBy: actorId,
     deleted: false,
   });
+  await syncElementStatuses(application, 'draft', actorId);
   return applicationRepo.update(
     application._id,
     {
@@ -368,6 +463,7 @@ export async function decideCurrentApproval(
   });
 
   if (decision === 'rejected') {
+    await syncElementStatuses(application, 'draft', actorId);
     return applicationRepo.update(
       application._id,
       {
@@ -411,9 +507,13 @@ export async function advanceToNextApprover(application: Application, actorId: s
   if (application.status === 'in_review_1st') {
     const nextTurn = application.firstStageTurn + 1;
     const total = flattenFirstStage(application).length;
+    const movesToNextStage = nextTurn >= total;
+    if (movesToNextStage) {
+      await syncElementStatuses(application, 'in_review_2nd', actorId);
+    }
     return applicationRepo.update(
       application._id,
-      nextTurn >= total
+      movesToNextStage
         ? { status: 'in_review_2nd', firstStageTurn: nextTurn, secondStageTurn: 0 }
         : { firstStageTurn: nextTurn },
       actorId,
@@ -423,9 +523,13 @@ export async function advanceToNextApprover(application: Application, actorId: s
   if (application.status === 'in_review_2nd') {
     const nextTurn = application.secondStageTurn + 1;
     const total = flattenSecondStage(application).length;
+    const movesToApproved = nextTurn >= total;
+    if (movesToApproved) {
+      await syncElementStatuses(application, 'approved', actorId);
+    }
     return applicationRepo.update(
       application._id,
-      nextTurn >= total ? { status: 'approved', secondStageTurn: nextTurn } : { secondStageTurn: nextTurn },
+      movesToApproved ? { status: 'approved', secondStageTurn: nextTurn } : { secondStageTurn: nextTurn },
       actorId,
     );
   }

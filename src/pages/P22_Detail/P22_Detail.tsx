@@ -17,6 +17,7 @@ import {
 import { parseCommunicationDataWorkbook } from '../../services/excel/CommunicationDataImportService';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ErrorList } from '../../components/ErrorList/ErrorList';
+import { Level2Results } from '../../components/Level2Results';
 import { formatDateTime } from '../../utils/dateUtils';
 import type { Application, Approval, Ecu } from '../../types/schema';
 import type { ElementCommand, ParsedFrameGroup } from '../../types/excel';
@@ -244,7 +245,9 @@ export function P22_Detail() {
         <h2 className="mb-2 text-sm font-semibold text-slate-700">チェック結果</h2>
         <p>Level1：{application.checkResults.level1.status === 'ok' ? '○ エラーなし' : '✗ エラーあり'}</p>
         <ErrorList result={application.checkResults.level1} />
-        <p className="mt-2 text-slate-400">Level2（サブセット単位）：Phase1-4で実装予定</p>
+        <div className="mt-2">
+          <Level2Results level2={application.checkResults.level2} />
+        </div>
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm">

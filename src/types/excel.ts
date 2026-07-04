@@ -130,3 +130,24 @@ export interface CommunicationDataParseResult {
   frameGroups: ParsedFrameGroup[];
   connectorGroups: ConnectorGroup[];
 }
+
+// ── GW例外指定Excel ──────────────────────────
+// 参照: docs/design/system-design-v0.6-part2-excel-format.md §③ GW例外指定Excel
+
+export type GwExceptionCommand = '追加' | '削除' | '';
+
+export interface ParsedGwExceptionRow {
+  rowNo: number;
+  command: GwExceptionCommand;
+  frameName: string;
+  frameVariantNo: string;
+  sourceBus: EntityRef;
+  targetBus: EntityRef;
+  gwVariantNo: string;
+  viaGwRefs: EntityRef[];
+  remarks: string;
+}
+
+export interface GwExceptionParseResult {
+  rows: ParsedGwExceptionRow[];
+}
