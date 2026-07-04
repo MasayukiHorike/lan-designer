@@ -10,6 +10,9 @@ import { P11_Subsets } from './pages/P11_Subsets/P11_Subsets';
 import { P20_Applications } from './pages/P20_Applications/P20_Applications';
 import { P21_Create } from './pages/P21_Create/P21_Create';
 import { P22_Detail } from './pages/P22_Detail/P22_Detail';
+import { P30_FrameSignal } from './pages/P30_FrameSignal/P30_FrameSignal';
+import { P33_FrameDetail } from './pages/P33_FrameDetail/P33_FrameDetail';
+import { P34_SignalDetail } from './pages/P34_SignalDetail/P34_SignalDetail';
 import { NotImplemented } from './pages/NotImplemented';
 
 export function App() {
@@ -20,6 +23,8 @@ export function App() {
           <Routes>
             <Route path="/role" element={<P00_RoleSwitch />} />
             <Route element={<RequireRole />}>
+              <Route path="/frames/:frameId" element={<P33_FrameDetail />} />
+              <Route path="/signals/:signalId" element={<P34_SignalDetail />} />
               <Route element={<Layout />}>
                 <Route path="/" element={<P01_Home />} />
                 <Route path="/lan-config" element={<P10_LanConfig />} />
@@ -28,6 +33,7 @@ export function App() {
                 <Route path="/applications/new" element={<P21_Create />} />
                 <Route path="/applications/:id" element={<P22_Detail />} />
                 <Route path="/applications/:id/edit" element={<P21_Create />} />
+                <Route path="/frame-signal" element={<P30_FrameSignal />} />
                 <Route path="*" element={<NotImplemented />} />
               </Route>
             </Route>

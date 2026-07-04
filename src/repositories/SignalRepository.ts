@@ -21,6 +21,10 @@ export class SignalRepository extends BaseRepository<Signal> {
     return all.filter((s) => !s.deleted);
   }
 
+  async findByFrameIdIncludingDeleted(frameId: string): Promise<Signal[]> {
+    return this.findByIndex('frameId', frameId);
+  }
+
   async findByApplicationId(applicationId: string): Promise<Signal[]> {
     return this.findByIndex('applicationId', applicationId);
   }

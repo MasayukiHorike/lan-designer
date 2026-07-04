@@ -3,6 +3,8 @@ export interface CheckIssue {
   message: string;
   targetType?: string;
   targetId?: string;
+  /** P30等でプロパティ単位のエラーアイコン表示に使う対象フィールド名（任意） */
+  field?: string;
 }
 
 export interface CheckResult {

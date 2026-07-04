@@ -78,6 +78,7 @@ async function checkSubset(projectId: string, variant: Variant, ecus: Ecu[]): Pr
     if (list.length > 1) {
       errors.push({
         code: 'L2_CANID_DUPLICATE',
+        field: 'canId',
         message: `CAN IDが重複しています: ${canId}（${list.map((f) => f.name).join(', ')}）`,
       });
     }
@@ -94,6 +95,7 @@ async function checkSubset(projectId: string, variant: Variant, ecus: Ecu[]): Pr
         if (a.bitPosition < b.bitPosition + b.bitLength && b.bitPosition < a.bitPosition + a.bitLength) {
           errors.push({
             code: 'L2_BIT_OVERLAP',
+            field: 'bitPosition',
             message: `ビット位置が重複しています: ${frame.name} の ${a.name} と ${b.name}`,
           });
         }
@@ -106,6 +108,7 @@ async function checkSubset(projectId: string, variant: Variant, ecus: Ecu[]): Pr
         if (s.bitPosition < E2E_RESERVED_BITS) {
           errors.push({
             code: 'L2_E2E_SIGNAL_OVERLAP',
+            field: 'e2e',
             message: `E2E予約領域とSignalのビットが重複しています: ${frame.name} / ${s.name}`,
           });
         }
@@ -117,13 +120,14 @@ async function checkSubset(projectId: string, variant: Variant, ecus: Ecu[]): Pr
         if (s.bitPosition + s.bitLength > secocStart) {
           errors.push({
             code: 'L2_SECOC_SIGNAL_OVERLAP',
+            field: 'secoc',
             message: `SecOC予約領域とSignalのビットが重複しています: ${frame.name} / ${s.name}`,
           });
         }
       }
       // ⑧ E2EとSecOC予約領域同士の重複
       if (frame.e2e.enabled && E2E_RESERVED_BITS > secocStart) {
-        errors.push({ code: 'L2_E2E_SECOC_OVERLAP', message: `E2EとSecOC予約領域が重複しています: ${frame.name}` });
+        errors.push({ code: 'L2_E2E_SECOC_OVERLAP', field: 'secoc', message: `E2EとSecOC予約領域が重複しています: ${frame.name}` });
       }
     }
 
@@ -134,6 +138,7 @@ async function checkSubset(projectId: string, variant: Variant, ecus: Ecu[]): Pr
     if (reservedBits > frame.dlc * 8 || signalBitsMax > frame.dlc * 8) {
       errors.push({
         code: 'L2_DLC_CAPACITY_EXCEEDED',
+        field: 'dlc',
         message: `DLC内にE2E＋SecOC＋全Signalが収まりません: ${frame.name}（DLC=${frame.dlc}）`,
       });
     }
@@ -143,10 +148,10 @@ async function checkSubset(projectId: string, variant: Variant, ecus: Ecu[]): Pr
     const hasTx = !!txrx && txrx.txBuses.size > 0;
     const hasRx = !!txrx && txrx.rxBuses.size > 0;
     if (hasRx && !hasTx) {
-      errors.push({ code: 'L2_ORPHAN_RX', message: `送信元が存在しない孤立Rxです: ${frame.name}` });
+      errors.push({ code: 'L2_ORPHAN_RX', field: 'trPorts', message: `送信元が存在しない孤立Rxです: ${frame.name}` });
     }
     if (hasTx && !hasRx) {
-      warnings.push({ code: 'L2_ORPHAN_TX', message: `受信先が存在しない孤立Txです（送信のみで受信ECUがありません）: ${frame.name}` });
+      warnings.push({ code: 'L2_ORPHAN_TX', field: 'trPorts', message: `受信先が存在しない孤立Txです（送信のみで受信ECUがありません）: ${frame.name}` });
     }
 
     // ④ 物理構成との不整合（このサブセットの有効ECU/バスバリと整合するか）
@@ -155,6 +160,7 @@ async function checkSubset(projectId: string, variant: Variant, ecus: Ecu[]): Pr
     if (!activeEcuVariantNos.includes(frame.variantNo) && !activeBusVariantNos.includes(frame.variantNo)) {
       errors.push({
         code: 'L2_PHYSICAL_MISMATCH',
+        field: 'variantNo',
         message: `フレームバリ番号がこのサブセットの物理構成（有効ECU/バスバリ）と整合していません: ${frame.name}`,
       });
     }
@@ -170,6 +176,7 @@ async function checkSubset(projectId: string, variant: Variant, ecus: Ecu[]): Pr
           if (!hasRoute) {
             errors.push({
               code: 'L2_GW_ROUTE_MISSING',
+              field: 'trPorts',
               message: `GW経路が存在しません: ${frame.name}（送信元バス→受信先バス間）`,
             });
           }
