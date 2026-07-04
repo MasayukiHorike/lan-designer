@@ -11,8 +11,10 @@ import { P20_Applications } from './pages/P20_Applications/P20_Applications';
 import { P21_Create } from './pages/P21_Create/P21_Create';
 import { P22_Detail } from './pages/P22_Detail/P22_Detail';
 import { P30_FrameSignal } from './pages/P30_FrameSignal/P30_FrameSignal';
+import { P31_SubsetView } from './pages/P31_SubsetView/P31_SubsetView';
 import { P33_FrameDetail } from './pages/P33_FrameDetail/P33_FrameDetail';
 import { P34_SignalDetail } from './pages/P34_SignalDetail/P34_SignalDetail';
+import { P40_EcuPort } from './pages/P40_EcuPort/P40_EcuPort';
 import { NotImplemented } from './pages/NotImplemented';
 
 export function App() {
@@ -34,6 +36,8 @@ export function App() {
                 <Route path="/applications/:id" element={<P22_Detail />} />
                 <Route path="/applications/:id/edit" element={<P21_Create />} />
                 <Route path="/frame-signal" element={<P30_FrameSignal />} />
+                <Route path="/frame-signal/subset" element={<P31_SubsetView />} />
+                <Route path="/ecu-port" element={<P40_EcuPort />} />
                 <Route path="*" element={<NotImplemented />} />
               </Route>
             </Route>
