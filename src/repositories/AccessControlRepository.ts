@@ -1,6 +1,8 @@
 import { BaseRepository } from './base/BaseRepository';
 import type { AccessControl, Permission, Role } from '../types/schema';
 import { DEFAULT_PERMISSIONS, SCREEN_NAMES } from '../constants/accessControl';
+import { newId } from '../utils/uuid';
+import { nowIso } from '../utils/dateUtils';
 
 // accessControls はP70で変更可能な画面別権限設定（変更履歴は保持しない）
 export class AccessControlRepository extends BaseRepository<AccessControl> {
@@ -33,5 +35,34 @@ export class AccessControlRepository extends BaseRepository<AccessControl> {
       screenName: SCREEN_NAMES[screenId] ?? screenId,
       permissions,
     }));
+  }
+
+  /** 画面ごとの権限設定を一括保存する（P70）。変更履歴は保持しない。 */
+  async saveAll(
+    projectId: string,
+    entries: { screenId: string; screenName: string; permissions: Record<Role, Permission> }[],
+    actorId: string,
+  ): Promise<void> {
+    const existing = await this.findAll(projectId);
+    const now = nowIso();
+    for (const entry of entries) {
+      const found = existing.find((a) => a.screenId === entry.screenId);
+      if (found) {
+        await this.update(found._id, { permissions: entry.permissions, screenName: entry.screenName }, actorId);
+      } else {
+        await this.create({
+          _id: newId('accessControls'),
+          projectId,
+          screenId: entry.screenId,
+          screenName: entry.screenName,
+          permissions: entry.permissions,
+          createdAt: now,
+          createdBy: actorId,
+          updatedAt: now,
+          updatedBy: actorId,
+          deleted: false,
+        });
+      }
+    }
   }
 }

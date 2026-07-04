@@ -6,6 +6,7 @@ import { SnapshotRepository } from '../../repositories/SnapshotRepository';
 import { ChangelogRepository } from '../../repositories/ChangelogRepository';
 import { confirmSnapshot, hasApprovedData } from '../../services/SnapshotService';
 import { PromptDialog } from '../../components/PromptDialog';
+import { ErrorBanner } from '../../components/ErrorBanner';
 import { formatDateTime } from '../../utils/dateUtils';
 import type { Snapshot } from '../../types/schema';
 
@@ -31,6 +32,7 @@ export function P50_Snapshots() {
   const [canConfirm, setCanConfirm] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = async () => {
     if (!project) return;
@@ -59,10 +61,13 @@ export function P50_Snapshots() {
   const handleConfirm = async (values: Record<string, string>) => {
     if (!project || !role) return;
     setConfirming(true);
+    setError(null);
     try {
       await confirmSnapshot(project._id, values.snapshotName, role);
       setShowDialog(false);
       await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '断面確定に失敗しました');
     } finally {
       setConfirming(false);
     }
@@ -76,6 +81,8 @@ export function P50_Snapshots() {
         <h1 className="text-2xl font-bold text-slate-800">公開バージョン一覧</h1>
         <p className="text-sm text-slate-500">断面確定によりapproved状態のデータをpublishedとして公開します。</p>
       </div>
+
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
       {isLanDesigner && (
         <div>

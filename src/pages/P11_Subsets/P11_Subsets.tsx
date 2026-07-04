@@ -18,6 +18,7 @@ import {
 } from '../../services/SubsetService';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { PromptDialog } from '../../components/PromptDialog';
+import { ErrorBanner } from '../../components/ErrorBanner';
 import type { Bus, Ecu, Variant } from '../../types/schema';
 import { SubsetMatrix } from './SubsetMatrix';
 
@@ -42,6 +43,7 @@ export function P11_Subsets() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ variant: Variant; references: string[] } | null>(
     null,
   );
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!project) return;
@@ -91,22 +93,32 @@ export function P11_Subsets() {
 
   const handleSave = async () => {
     if (!role) return;
-    for (const variant of variants) {
-      const { ecuConnectors, busVariantIds } = buildVariantAssignment(
-        ecuConnRows,
-        checkedEcuConn.get(variant._id) ?? new Set(),
-        checkedBuses.get(variant._id) ?? new Set(),
-      );
-      await saveSubsetAssignment(variant, ecuConnectors, busVariantIds, role);
+    setError(null);
+    try {
+      for (const variant of variants) {
+        const { ecuConnectors, busVariantIds } = buildVariantAssignment(
+          ecuConnRows,
+          checkedEcuConn.get(variant._id) ?? new Set(),
+          checkedBuses.get(variant._id) ?? new Set(),
+        );
+        await saveSubsetAssignment(variant, ecuConnectors, busVariantIds, role);
+      }
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'サブセットの保存に失敗しました');
     }
-    await reload();
   };
 
   const handleAddSubset = async (values: Record<string, string>) => {
     if (!project || !role) return;
-    await createSubset(project._id, values.generation, values.powerTrain, role);
-    setShowAddDialog(false);
-    await reload();
+    setError(null);
+    try {
+      await createSubset(project._id, values.generation, values.powerTrain, role);
+      setShowAddDialog(false);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'サブセットの追加に失敗しました');
+    }
   };
 
   const handleDeleteClick = () => {
@@ -117,10 +129,15 @@ export function P11_Subsets() {
 
   const handleDeleteConfirm = async () => {
     if (!deleteConfirm || !role) return;
-    await deleteSubset(deleteConfirm.variant, role);
-    setSelectedVariantId(null);
-    setDeleteConfirm(null);
-    await reload();
+    setError(null);
+    try {
+      await deleteSubset(deleteConfirm.variant, role);
+      setSelectedVariantId(null);
+      setDeleteConfirm(null);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'サブセットの削除に失敗しました');
+    }
   };
 
   return (
@@ -131,6 +148,8 @@ export function P11_Subsets() {
           世代・パワトレ単位のサブセット定義。ECU/コネクター・バスバリの有効接続を割り当てます。登録は即時公開されます。
         </p>
       </div>
+
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
       {canEdit && (
         <div className="flex items-center gap-2">

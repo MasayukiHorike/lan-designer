@@ -16,6 +16,7 @@ import {
 } from '../../services/LanConfigService';
 import { ErrorList } from '../../components/ErrorList/ErrorList';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ErrorBanner } from '../../components/ErrorBanner';
 import type { CheckResult } from '../../types/check';
 import type { Bus, Ecu } from '../../types/schema';
 import { EcuListTab } from './EcuListTab';
@@ -48,6 +49,7 @@ export function P10_LanConfig() {
   const [importing, setImporting] = useState(false);
   const [selected, setSelected] = useState<{ type: 'ecu' | 'bus'; id: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ references: string[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(async () => {
@@ -71,6 +73,7 @@ export function P10_LanConfig() {
 
     setImporting(true);
     setCheckResult(null);
+    setError(null);
     try {
       const parsed = await parsePhysicalConfigWorkbook(file);
       const result = checkPhysicalConfig(parsed);
@@ -79,6 +82,8 @@ export function P10_LanConfig() {
         await importPhysicalConfig(project._id, parsed, role);
         await reload();
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Excelインポートに失敗しました');
     } finally {
       setImporting(false);
     }
@@ -86,23 +91,33 @@ export function P10_LanConfig() {
 
   const handleDeleteClick = async () => {
     if (!selected || !project) return;
-    const references =
-      selected.type === 'ecu'
-        ? await getEcuReferences(project._id, selected.id)
-        : await getBusReferences(project._id, selected.id);
-    setDeleteConfirm({ references });
+    setError(null);
+    try {
+      const references =
+        selected.type === 'ecu'
+          ? await getEcuReferences(project._id, selected.id)
+          : await getBusReferences(project._id, selected.id);
+      setDeleteConfirm({ references });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '参照確認に失敗しました');
+    }
   };
 
   const handleDeleteConfirm = async () => {
     if (!selected || !role) return;
-    if (selected.type === 'ecu') {
-      await deleteEcu(selected.id, role);
-    } else {
-      await deleteBus(selected.id, role);
+    setError(null);
+    try {
+      if (selected.type === 'ecu') {
+        await deleteEcu(selected.id, role);
+      } else {
+        await deleteBus(selected.id, role);
+      }
+      setSelected(null);
+      setDeleteConfirm(null);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '削除に失敗しました');
     }
-    setSelected(null);
-    setDeleteConfirm(null);
-    await reload();
   };
 
   return (
@@ -132,6 +147,8 @@ export function P10_LanConfig() {
           </button>
         </div>
       )}
+
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
       <ErrorList result={checkResult} />
       {checkResult && checkResult.status !== 'error' && (

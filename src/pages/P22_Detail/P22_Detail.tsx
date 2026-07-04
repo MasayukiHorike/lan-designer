@@ -17,6 +17,7 @@ import {
 import { parseCommunicationDataWorkbook } from '../../services/excel/CommunicationDataImportService';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ErrorList } from '../../components/ErrorList/ErrorList';
+import { ErrorBanner } from '../../components/ErrorBanner';
 import { Level2Results } from '../../components/Level2Results';
 import { formatDateTime } from '../../utils/dateUtils';
 import type { Application, Approval, Ecu } from '../../types/schema';
@@ -51,6 +52,7 @@ export function P22_Detail() {
   const [approvalHistory, setApprovalHistory] = useState<Approval[]>([]);
   const [frameGroupsByEcu, setFrameGroupsByEcu] = useState<Record<string, ParsedFrameGroup[]>>({});
   const [comment, setComment] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const reload = async () => {
     if (!id) return;
@@ -110,21 +112,36 @@ export function P22_Detail() {
 
   const handleWithdraw = async () => {
     if (!role) return;
-    await withdrawApplication(application, role);
-    await reload();
+    setError(null);
+    try {
+      await withdrawApplication(application, role);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '引き戻しに失敗しました');
+    }
   };
 
   const handleDecide = async (decision: 'approved' | 'rejected') => {
     if (!role) return;
-    await decideCurrentApproval(application, decision, comment, role);
-    setComment('');
-    await reload();
+    setError(null);
+    try {
+      await decideCurrentApproval(application, decision, comment, role);
+      setComment('');
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '承認操作に失敗しました');
+    }
   };
 
   const handleAdvance = async () => {
     if (!role) return;
-    await advanceToNextApprover(application, role);
-    await reload();
+    setError(null);
+    try {
+      await advanceToNextApprover(application, role);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '回覧に失敗しました');
+    }
   };
 
   const firstStageSlots = flattenFirstStage(application);
@@ -145,6 +162,8 @@ export function P22_Detail() {
         </div>
         <p className="mt-1 text-sm text-slate-500">{application.title || '(件名未設定)'}</p>
       </div>
+
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
       <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">申請基本情報</h2>

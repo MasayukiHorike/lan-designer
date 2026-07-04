@@ -18,6 +18,7 @@ import {
 } from '../../services/ApplicationService';
 import { EmailListInput } from '../../components/EmailListInput';
 import { ErrorList } from '../../components/ErrorList/ErrorList';
+import { ErrorBanner } from '../../components/ErrorBanner';
 import { Level2Results } from '../../components/Level2Results';
 import type { Application, Ecu } from '../../types/schema';
 import type { CommunicationDataCheckContext } from '../../services/check/Level1CheckService';
@@ -47,6 +48,7 @@ export function P21_Create() {
   const [loadingExisting, setLoadingExisting] = useState(!!id);
   const [activeEcuNames, setActiveEcuNames] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!project) return;
@@ -102,19 +104,29 @@ export function P21_Create() {
     file: File | undefined,
   ) => {
     if (!application || !role || !file) return;
-    const context = await buildContext();
-    const updated =
-      fileType === 'communicationData'
-        ? await registerCommunicationDataFile(application, ecuName, file, context, role)
-        : await registerGwExceptionFile(application, ecuName, file, context, role);
-    setApplication(updated);
+    setError(null);
+    try {
+      const context = await buildContext();
+      const updated =
+        fileType === 'communicationData'
+          ? await registerCommunicationDataFile(application, ecuName, file, context, role)
+          : await registerGwExceptionFile(application, ecuName, file, context, role);
+      setApplication(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'ファイルの登録に失敗しました');
+    }
   };
 
   const handleRemoveFile = async (ecuName: string, fileType: 'communicationData' | 'gwException') => {
     if (!application || !role) return;
-    const context = await buildContext();
-    const updated = await removeFile(application, ecuName, fileType, context, role);
-    setApplication(updated);
+    setError(null);
+    try {
+      const context = await buildContext();
+      const updated = await removeFile(application, ecuName, fileType, context, role);
+      setApplication(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'ファイルの削除に失敗しました');
+    }
   };
 
   const handleFirstStageChange = async (ecuName: string, emails: string[]) => {
@@ -132,9 +144,12 @@ export function P21_Create() {
   const handleSubmit = async () => {
     if (!application || !role) return;
     setSubmitting(true);
+    setError(null);
     try {
       await submitApplication(application, role);
       navigate(`/applications/${application._id.split('/')[1]}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '申請提出に失敗しました');
     } finally {
       setSubmitting(false);
     }
@@ -187,6 +202,8 @@ export function P21_Create() {
         <h1 className="text-2xl font-bold text-slate-800">申請書作成</h1>
         <p className="text-sm text-slate-500">申請書番号：{application.applicationNo}</p>
       </div>
+
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
       <label className="flex flex-col gap-1 text-sm text-slate-600">
         件名
