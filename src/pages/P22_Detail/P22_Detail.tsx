@@ -5,8 +5,10 @@ import { useRole } from '../../contexts/RoleContext';
 import { ApplicationRepository } from '../../repositories/ApplicationRepository';
 import { ApprovalRepository } from '../../repositories/ApprovalRepository';
 import { EcuRepository } from '../../repositories/EcuRepository';
+import { FrameRepository } from '../../repositories/FrameRepository';
 import {
   advanceToNextApprover,
+  buildCommunicationDataCheckContext,
   decideCurrentApproval,
   flattenFirstStage,
   flattenSecondStage,
@@ -15,17 +17,38 @@ import {
   withdrawApplication,
 } from '../../services/ApplicationService';
 import { parseCommunicationDataWorkbook } from '../../services/excel/CommunicationDataImportService';
+import {
+  editFrameProperties,
+  editSignalProperties,
+  reimportCommunicationDataFile,
+  reimportGwExceptionFile,
+  removeFramePort,
+  removeSignalPort,
+  upsertFramePort,
+  upsertSignalPort,
+  refreshLevel2,
+  type FrameEditableFields,
+  type SignalEditableFields,
+} from '../../services/ReviewEditService';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ErrorList } from '../../components/ErrorList/ErrorList';
 import { ErrorBanner } from '../../components/ErrorBanner';
 import { Level2Results } from '../../components/Level2Results';
+import { FrameDetailView } from '../../components/FrameDetailView';
+import { SignalDetailView } from '../../components/SignalDetailView';
 import { formatDateTime } from '../../utils/dateUtils';
-import type { Application, Approval, Ecu } from '../../types/schema';
+import type { Application, Approval, Frame } from '../../types/schema';
 import type { ElementCommand, ParsedFrameGroup } from '../../types/excel';
 
 const applicationRepo = new ApplicationRepository();
 const approvalRepo = new ApprovalRepository();
 const ecuRepo = new EcuRepository();
+const frameRepo = new FrameRepository();
+
+const EDIT_METHOD_LABELS: Record<'excel' | 'manual', string> = {
+  excel: 'Excel再インポート',
+  manual: '画面直接編集',
+};
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -53,6 +76,9 @@ export function P22_Detail() {
   const [frameGroupsByEcu, setFrameGroupsByEcu] = useState<Record<string, ParsedFrameGroup[]>>({});
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [ownFrames, setOwnFrames] = useState<Frame[]>([]);
+  const [expandedFrameId, setExpandedFrameId] = useState<string | null>(null);
+  const [viewSignalId, setViewSignalId] = useState<string | null>(null);
 
   const reload = async () => {
     if (!id) return;
@@ -61,13 +87,15 @@ export function P22_Detail() {
     if (app) {
       const history = await approvalRepo.findByApplicationId(app._id);
       setApprovalHistory(history);
+      const frames = await frameRepo.findByApplicationId(app._id);
+      setOwnFrames(frames.filter((f) => !f.deleted));
     }
     if (app && project) {
-      const ecus: Ecu[] = await ecuRepo.findPublished(project._id);
+      const publishedEcus = await ecuRepo.findPublished(project._id);
       const entries: Record<string, ParsedFrameGroup[]> = {};
       for (const f of app.importFiles) {
         if (!f.communicationDataFileBlob) continue;
-        const parsed = await parseCommunicationDataWorkbook(f.communicationDataFileBlob, ecus);
+        const parsed = await parseCommunicationDataWorkbook(f.communicationDataFileBlob, publishedEcus);
         entries[f.ecuName] = parsed.frameGroups;
       }
       setFrameGroupsByEcu(entries);
@@ -92,6 +120,7 @@ export function P22_Detail() {
   const decided = isCurrentSlotDecided(application);
   const requiredRole = slot?.stage === '1st' ? 'ECU承認者' : 'LAN承認者';
   const canActOnSlot = !!slot && role === requiredRole;
+  const canReviewEdit = canActOnSlot && slot?.stage === '2nd';
 
   const nextLabel = (() => {
     if (application.status === 'in_review_1st') {
@@ -141,6 +170,142 @@ export function P22_Detail() {
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : '回覧に失敗しました');
+    }
+  };
+
+  const handleSaveFrameProperties = async (frameId: string, patch: Partial<FrameEditableFields>) => {
+    if (!role) return;
+    setError(null);
+    try {
+      const updated = await editFrameProperties(application, frameId, patch, role, role);
+      setApplication(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Frameプロパティの編集に失敗しました');
+      throw e;
+    }
+  };
+
+  const handleSaveSignalProperties = async (signalId: string, patch: Partial<SignalEditableFields>) => {
+    if (!role) return;
+    setError(null);
+    try {
+      const updated = await editSignalProperties(application, signalId, patch, role, role);
+      setApplication(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Signalプロパティの編集に失敗しました');
+      throw e;
+    }
+  };
+
+  const handleUpsertFramePort = async (
+    frameId: string,
+    port: {
+      framePortId?: string;
+      ecuId: string;
+      connectorId: string;
+      direction: 'P-Port' | 'R-Port';
+      e2eEnabled: boolean;
+      secocEnabled: boolean;
+      timeoutMs: number | null;
+    },
+  ) => {
+    if (!role) return;
+    setError(null);
+    try {
+      await upsertFramePort(
+        port.ecuId,
+        port.connectorId,
+        { framePortId: port.framePortId, frameId, direction: port.direction, e2eEnabled: port.e2eEnabled, secocEnabled: port.secocEnabled, timeoutMs: port.timeoutMs },
+        { projectId: application.projectId, applicationId: application._id, status: application.status, actorId: role },
+      );
+      const updated = await refreshLevel2(application, role);
+      setApplication(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'FramePortの編集に失敗しました');
+      throw e;
+    }
+  };
+
+  const handleRemoveFramePort = async (framePortId: string, ecuId: string, connectorId: string, frameId: string) => {
+    if (!role) return;
+    setError(null);
+    try {
+      await removeFramePort(ecuId, connectorId, framePortId, frameId, {
+        projectId: application.projectId,
+        applicationId: application._id,
+        status: application.status,
+        actorId: role,
+      });
+      const updated = await refreshLevel2(application, role);
+      setApplication(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'FramePortの削除に失敗しました');
+      throw e;
+    }
+  };
+
+  const handleUpsertSignalPort = async (
+    signalId: string,
+    port: {
+      signalPortId?: string;
+      ecuId: string;
+      connectorId: string;
+      direction: 'P-Port' | 'R-Port';
+      e2eEnabled: boolean;
+      secocEnabled: boolean;
+    },
+  ) => {
+    if (!role) return;
+    setError(null);
+    try {
+      await upsertSignalPort(
+        port.ecuId,
+        port.connectorId,
+        { signalPortId: port.signalPortId, signalId, direction: port.direction, e2eEnabled: port.e2eEnabled, secocEnabled: port.secocEnabled },
+        role,
+      );
+      const updated = await refreshLevel2(application, role);
+      setApplication(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'SignalPortの編集に失敗しました');
+      throw e;
+    }
+  };
+
+  const handleRemoveSignalPort = async (signalPortId: string, ecuId: string, connectorId: string) => {
+    if (!role) return;
+    setError(null);
+    try {
+      await removeSignalPort(ecuId, connectorId, signalPortId, role);
+      const updated = await refreshLevel2(application, role);
+      setApplication(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'SignalPortの削除に失敗しました');
+      throw e;
+    }
+  };
+
+  const handleReimportCommunicationData = async (ecuName: string, file: File) => {
+    if (!role) return;
+    setError(null);
+    try {
+      const context = await buildCommunicationDataCheckContext(application.projectId);
+      await reimportCommunicationDataFile(application, ecuName, file, context, role, role);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '通信データExcelの再インポートに失敗しました');
+    }
+  };
+
+  const handleReimportGwException = async (ecuName: string, file: File) => {
+    if (!role) return;
+    setError(null);
+    try {
+      const context = await buildCommunicationDataCheckContext(application.projectId);
+      await reimportGwExceptionFile(application, ecuName, file, context, role, role);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'GW例外指定Excelの再インポートに失敗しました');
     }
   };
 
@@ -208,6 +373,109 @@ export function P22_Detail() {
           </div>
         ))}
       </div>
+
+      {canReviewEdit && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">Excel再インポート（LAN承認者・二次審査中のみ）</h2>
+          <p className="mb-2 text-xs text-slate-500">
+            修正版のExcelを選択すると、既存の登録ファイルを差し替えてLevel1/Level2チェックを再実行します。
+          </p>
+          {application.importFiles.map((f) => (
+            <div key={f.ecuName} className="mb-2 flex flex-wrap items-center gap-3">
+              <span className="w-32 font-medium">{f.ecuName}</span>
+              {f.communicationDataFileBlob !== undefined && (
+                <label className="flex items-center gap-1 text-xs text-slate-600">
+                  通信データ再取込：
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) handleReimportCommunicationData(f.ecuName, file);
+                    }}
+                  />
+                </label>
+              )}
+              {f.gwExceptionFileBlob !== undefined && (
+                <label className="flex items-center gap-1 text-xs text-slate-600">
+                  GW例外指定再取込：
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) handleReimportGwException(f.ecuName, file);
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {canReviewEdit && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">登録要素の編集（LAN承認者・二次審査中のみ）</h2>
+          <p className="mb-2 text-xs text-slate-500">
+            この申請書が持ち込んだFrame/Signalのみ編集できます。Frame名をクリックすると詳細・編集フォームを展開します。
+          </p>
+          {ownFrames.length === 0 && <p className="text-slate-400">対象のFrameはありません</p>}
+          <ul className="flex flex-col gap-1">
+            {ownFrames.map((f) => (
+              <li key={f._id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewSignalId(null);
+                    setExpandedFrameId(expandedFrameId === f._id ? null : f._id);
+                  }}
+                  className="text-blue-600 hover:underline"
+                >
+                  {f.name}（{f.variantNo}）
+                </button>
+              </li>
+            ))}
+          </ul>
+          {expandedFrameId && (
+            <div className="mt-3 rounded border border-slate-200 bg-white p-3">
+              {viewSignalId ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setViewSignalId(null)}
+                    className="mb-2 text-xs text-blue-600 hover:underline"
+                  >
+                    ◀ Frameに戻る
+                  </button>
+                  <SignalDetailView
+                    signalId={viewSignalId}
+                    editable
+                    onSaveProperties={(patch) => handleSaveSignalProperties(viewSignalId, patch)}
+                    onUpsertPort={(port) => handleUpsertSignalPort(viewSignalId, port)}
+                    onRemovePort={(signalPortId, ecuId, connectorId) =>
+                      handleRemoveSignalPort(signalPortId, ecuId, connectorId)
+                    }
+                  />
+                </>
+              ) : (
+                <FrameDetailView
+                  frameId={expandedFrameId}
+                  editable
+                  onSaveProperties={(patch) => handleSaveFrameProperties(expandedFrameId, patch)}
+                  onUpsertPort={(port) => handleUpsertFramePort(expandedFrameId, port)}
+                  onRemovePort={(framePortId, ecuId, connectorId) =>
+                    handleRemoveFramePort(framePortId, ecuId, connectorId, expandedFrameId)
+                  }
+                  onSelectSignal={(signalId) => setViewSignalId(signalId)}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {Object.keys(frameGroupsByEcu).length > 0 && (
         <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
@@ -368,6 +636,40 @@ export function P22_Detail() {
           </button>
         </div>
       )}
+
+      <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <h2 className="mb-2 text-sm font-semibold text-slate-700">編集履歴</h2>
+        {application.editHistories.length === 0 && (
+          <p className="text-slate-400">Excel再インポート・画面直接編集の履歴はありません</p>
+        )}
+        <ul className="flex flex-col gap-2">
+          {[...application.editHistories]
+            .sort((a, b) => b.editedAt.localeCompare(a.editedAt))
+            .map((entry, i) => (
+              <li key={i} className="border-t border-slate-100 pt-2 first:border-t-0 first:pt-0">
+                <p className="text-slate-600">
+                  {formatDateTime(entry.editedAt)}｜{entry.editedBy}｜
+                  <span
+                    className={
+                      entry.method === 'excel'
+                        ? 'text-blue-600 font-medium'
+                        : 'text-emerald-600 font-medium'
+                    }
+                  >
+                    {EDIT_METHOD_LABELS[entry.method]}
+                  </span>
+                </p>
+                <ul className="ml-3 text-xs text-slate-500">
+                  {(entry.changes as { field: string; before: unknown; after: unknown }[]).map((c, j) => (
+                    <li key={j}>
+                      {c.field}：{JSON.stringify(c.before)} → {JSON.stringify(c.after)}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+        </ul>
+      </div>
 
       <div className="flex gap-2">
         {canEdit && (

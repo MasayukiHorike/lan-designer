@@ -3,9 +3,12 @@ import { ApprovalRepository } from '../repositories/ApprovalRepository';
 import { FrameRepository } from '../repositories/FrameRepository';
 import { SignalRepository } from '../repositories/SignalRepository';
 import { GwRouteRepository } from '../repositories/GwRouteRepository';
+import { EcuRepository } from '../repositories/EcuRepository';
+import { BusRepository } from '../repositories/BusRepository';
 import { newId } from '../utils/uuid';
 import { nowIso } from '../utils/dateUtils';
 import { generateApplicationNo } from '../utils/applicationNo';
+import { compareVersions } from '../utils/versionUtils';
 import { parseCommunicationDataWorkbook } from './excel/CommunicationDataImportService';
 import { parseGwExceptionWorkbook } from './excel/GwExceptionImportService';
 import {
@@ -26,6 +29,47 @@ const approvalRepo = new ApprovalRepository();
 const frameRepo = new FrameRepository();
 const signalRepo = new SignalRepository();
 const gwRouteRepo = new GwRouteRepository();
+const ecuRepo = new EcuRepository();
+const busRepo = new BusRepository();
+
+/** name+variantNo単位で「現在有効な最新バージョン」のみを残す（削除済みのみのキーは除外） */
+function latestNonDeletedByKey<T extends { name: string; variantNo: string; versionNo: string; deleted: boolean }>(
+  docs: T[],
+): T[] {
+  const groups = new Map<string, T[]>();
+  for (const d of docs) {
+    const key = `${d.name}_${d.variantNo}`;
+    const list = groups.get(key) ?? [];
+    list.push(d);
+    groups.set(key, list);
+  }
+  const result: T[] = [];
+  for (const list of groups.values()) {
+    const nonDeleted = list.filter((d) => !d.deleted).sort((a, b) => compareVersions(b.versionNo, a.versionNo));
+    if (nonDeleted.length > 0) result.push(nonDeleted[0]);
+  }
+  return result;
+}
+
+/**
+ * 通信データExcelのLevel1チェック用コンテキストを構築する。
+ * existingFrames/existingSignalsはDB上の現在の最新有効バージョンを反映する必要がある
+ * （空配列を渡すと「変更(verup)」「削除」コマンドが常に「未登録」エラーになってしまう）。
+ */
+export async function buildCommunicationDataCheckContext(projectId: string): Promise<CommunicationDataCheckContext> {
+  const [allFrames, allSignals, ecus, buses] = await Promise.all([
+    frameRepo.findAllIncludingDeleted(projectId),
+    signalRepo.findAllIncludingDeleted(projectId),
+    ecuRepo.findPublished(projectId),
+    busRepo.findPublished(projectId),
+  ]);
+  return {
+    existingFrames: latestNonDeletedByKey(allFrames),
+    existingSignals: latestNonDeletedByKey(allSignals),
+    ecus,
+    buses,
+  };
+}
 
 export async function issueApplicationNo(projectId: string, ecuName: string): Promise<string> {
   const dateStr = nowIso().slice(0, 10).replace(/-/g, '');
@@ -134,7 +178,7 @@ function mergeCheckResults(results: { ecuName: string; result: CheckResult }[]):
 }
 
 /** 登録済み通信データExcelを全てパースし、フレームキー（name_variantNo）集合を作る */
-async function buildFrameKeys(
+export async function buildFrameKeys(
   importFiles: ImportFile[],
   ecus: CommunicationDataCheckContext['ecus'],
 ): Promise<{ keys: Set<string>; parsedByEcu: Map<string, CommunicationDataParseResult> }> {

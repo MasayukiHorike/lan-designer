@@ -3,9 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useProject } from '../../contexts/ProjectContext';
 import { useRole } from '../../contexts/RoleContext';
 import { EcuRepository } from '../../repositories/EcuRepository';
-import { BusRepository } from '../../repositories/BusRepository';
 import { ApplicationRepository } from '../../repositories/ApplicationRepository';
 import {
+  buildCommunicationDataCheckContext,
   createDraftApplication,
   getSubmitBlockers,
   registerCommunicationDataFile,
@@ -24,7 +24,6 @@ import type { Application, Ecu } from '../../types/schema';
 import type { CommunicationDataCheckContext } from '../../services/check/Level1CheckService';
 
 const ecuRepo = new EcuRepository();
-const busRepo = new BusRepository();
 const applicationRepo = new ApplicationRepository();
 
 function activeEcuNamesOf(application: Application): string[] {
@@ -73,11 +72,7 @@ export function P21_Create() {
 
   const buildContext = async (): Promise<CommunicationDataCheckContext> => {
     if (!project) throw new Error('project not ready');
-    const [allEcus, allBuses] = await Promise.all([
-      ecuRepo.findPublished(project._id),
-      busRepo.findPublished(project._id),
-    ]);
-    return { existingFrames: [], existingSignals: [], ecus: allEcus, buses: allBuses };
+    return buildCommunicationDataCheckContext(project._id);
   };
 
   const handleStart = async () => {
