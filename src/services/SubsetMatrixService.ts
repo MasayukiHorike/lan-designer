@@ -34,11 +34,16 @@ export interface SubsetMatrix {
 
 /**
  * サブセット（世代×パワトレ）で有効化されたECU/コネクターを列、Frame/Signalを行とした
- * T/Rマトリクスを構築する（P31 サブセット別参照画面用）。
+ * T/Rマトリクスを構築する（P31 サブセット別参照画面・P60 全体通信マトリクスExcel出力で使用）。
  * フィルタリングロジックはPart3 §6「サブセットフィルタリング解決ロジック」に準拠：
  * variants.ecuConnectorsから有効ECU・有効コネクターを取得し、その配下のframePorts/signalPortsのみ抽出する。
+ * snapshotIdsを渡すと、その断面に含まれるFrame/Signalのみに絞り込む（出力時の断面選択用）。
  */
-export async function buildSubsetMatrix(projectId: string, variant: Variant): Promise<SubsetMatrix> {
+export async function buildSubsetMatrix(
+  projectId: string,
+  variant: Variant,
+  snapshotIds?: { frameIds: Set<string>; signalIds: Set<string> },
+): Promise<SubsetMatrix> {
   const ecus = await ecuRepo.findByProjectId(projectId);
   const ecuById = new Map(ecus.map((e) => [e._id, e]));
 
@@ -78,16 +83,19 @@ export async function buildSubsetMatrix(projectId: string, variant: Variant): Pr
 
   const groups: FrameMatrixGroup[] = [];
   for (const frameId of frameCells.keys()) {
+    if (snapshotIds && !snapshotIds.frameIds.has(frameId)) continue;
     const frame = await frameRepo.findById(frameId);
     if (!frame || frame.deleted) continue;
 
     const signals = await signalRepo.findByFrameId(frame._id);
-    const signalRows: MatrixRow[] = signals.map((s) => ({
-      id: s._id,
-      name: s.name,
-      deleted: s.deleted,
-      cells: signalCells.get(s._id) ?? {},
-    }));
+    const signalRows: MatrixRow[] = signals
+      .filter((s) => !snapshotIds || snapshotIds.signalIds.has(s._id))
+      .map((s) => ({
+        id: s._id,
+        name: s.name,
+        deleted: s.deleted,
+        cells: signalCells.get(s._id) ?? {},
+      }));
     signalRows.sort((a, b) => a.name.localeCompare(b.name));
 
     groups.push({

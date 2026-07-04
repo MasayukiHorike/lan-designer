@@ -17,6 +17,7 @@ import { P34_SignalDetail } from './pages/P34_SignalDetail/P34_SignalDetail';
 import { P40_EcuPort } from './pages/P40_EcuPort/P40_EcuPort';
 import { P50_Snapshots } from './pages/P50_Snapshots/P50_Snapshots';
 import { P51_Changelogs } from './pages/P51_Changelogs/P51_Changelogs';
+import { P60_Export } from './pages/P60_Export/P60_Export';
 import { NotImplemented } from './pages/NotImplemented';
 
 export function App() {
@@ -42,6 +43,7 @@ export function App() {
                 <Route path="/ecu-port" element={<P40_EcuPort />} />
                 <Route path="/snapshots" element={<P50_Snapshots />} />
                 <Route path="/changelogs" element={<P51_Changelogs />} />
+                <Route path="/export" element={<P60_Export />} />
                 <Route path="*" element={<NotImplemented />} />
               </Route>
             </Route>
