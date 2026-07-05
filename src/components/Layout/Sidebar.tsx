@@ -45,7 +45,13 @@ export function Sidebar() {
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
-      {!collapsed &&
+      {collapsed ? (
+        <div className="flex flex-col gap-0.5 px-1">
+          {MENU_GROUPS.flatMap((group) => group.items).map((item) => (
+            <SidebarMenuItem key={item.screenId} item={item} collapsed />
+          ))}
+        </div>
+      ) : (
         MENU_GROUPS.map((group) => {
           const isCollapsed = collapsedGroups.has(group.title);
           return (
@@ -67,7 +73,8 @@ export function Sidebar() {
               )}
             </div>
           );
-        })}
+        })
+      )}
     </nav>
   );
 }
