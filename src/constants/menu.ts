@@ -48,6 +48,9 @@ export const MENU_GROUPS: MenuGroup[] = [
   },
   {
     title: 'システム管理',
-    items: [{ screenId: 'P70', label: 'アクセス権管理', path: '/access-control' }],
+    items: [
+      { screenId: 'P02', label: 'プロジェクト管理', path: '/projects' },
+      { screenId: 'P70', label: 'アクセス権管理', path: '/access-control' },
+    ],
   },
 ];

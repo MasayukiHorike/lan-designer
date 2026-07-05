@@ -4,6 +4,7 @@ import type { Permission, Role } from '../types/schema';
 
 export const SCREEN_NAMES: Record<string, string> = {
   P01: 'ホーム',
+  P02: 'プロジェクト管理',
   P10: 'LAN構成管理',
   P11: 'サブセット管理',
   P20: '申請書管理',
@@ -18,6 +19,7 @@ export const SCREEN_NAMES: Record<string, string> = {
 
 export const DEFAULT_PERMISSIONS: Record<string, Record<Role, Permission>> = {
   P01: { ECU設計者: 'full', ECU承認者: 'full', LAN設計者: 'full', LAN承認者: 'full' },
+  P02: { ECU設計者: 'readonly', ECU承認者: 'readonly', LAN設計者: 'full', LAN承認者: 'readonly' },
   P10: { ECU設計者: 'readonly', ECU承認者: 'readonly', LAN設計者: 'full', LAN承認者: 'readonly' },
   P11: { ECU設計者: 'readonly', ECU承認者: 'readonly', LAN設計者: 'full', LAN承認者: 'readonly' },
   P20: { ECU設計者: 'full', ECU承認者: 'full', LAN設計者: 'full', LAN承認者: 'full' },

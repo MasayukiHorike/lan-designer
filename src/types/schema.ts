@@ -39,6 +39,7 @@ export interface Project extends BaseDocument {
   name: string;
   description: string;
   status: 'active';
+  themeColor: string;
 }
 
 // ── 2. variants（サブセット定義）─────────────

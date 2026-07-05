@@ -32,4 +32,11 @@ export class ApprovalRepository {
     await db.put(this.storeName, updated);
     return updated;
   }
+
+  /** 指定申請書に紐づく承認履歴を物理削除する（プロジェクト削除・リセット専用） */
+  async hardDeleteByApplicationId(applicationId: string): Promise<void> {
+    const db = await getDb();
+    const all = await this.findByApplicationId(applicationId);
+    await Promise.all(all.map((a) => db.delete(this.storeName, a._id)));
+  }
 }

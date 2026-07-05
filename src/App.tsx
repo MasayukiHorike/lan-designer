@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout/Layout';
 import { P00_RoleSwitch } from './pages/P00_RoleSwitch/P00_RoleSwitch';
 import { P01_Home } from './pages/P01_Home/P01_Home';
+import { P02_Projects } from './pages/P02_Projects/P02_Projects';
 import { P10_LanConfig } from './pages/P10_LanConfig/P10_LanConfig';
 import { P11_Subsets } from './pages/P11_Subsets/P11_Subsets';
 import { P20_Applications } from './pages/P20_Applications/P20_Applications';
@@ -35,6 +36,7 @@ export function App() {
                 <Route path="/signals/:signalId" element={<P34_SignalDetail />} />
                 <Route element={<Layout />}>
                   <Route path="/" element={<P01_Home />} />
+                  <Route path="/projects" element={<P02_Projects />} />
                   <Route path="/lan-config" element={<P10_LanConfig />} />
                   <Route path="/subsets" element={<P11_Subsets />} />
                   <Route path="/applications" element={<P20_Applications />} />

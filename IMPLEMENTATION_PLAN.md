@@ -126,7 +126,7 @@ MVPおよび全画面の一次実装が完了した現在、以下3種のタス�
 　└ GitHub Issueで管理し、都度対応する
 ```
 
-### Phase2-1: プロジェクト管理機能の新設（Issue #1 対応）
+### Phase2-1: プロジェクト管理機能の新設（Issue #1 対応） ✅完了
 
 **背景（Issue #1: データベースの初期化機能不足）**
 ```
@@ -218,28 +218,41 @@ projectsレコード自体も削除
 
 **実装タスク**
 ```
-□ projects スキーマに themeColor フィールド追加
-□ ProjectRepository に以下メソッド追加
-   └ create / delete（カスケード削除含む）/ reset（カスケード削除、
+✅ projects スキーマに themeColor フィールド追加
+✅ create / delete（カスケード削除含む）/ reset（カスケード削除、
      projectsレコードは保持）
-□ 各Repositoryにプロジェクト単位カスケード削除処理を追加
-□ P02画面実装
+   【実装時の判断】ProjectRepositoryへの直接追加ではなく、新規
+     src/services/ProjectManagementService.tsに実装した。カスケード削除の
+     実体（hardDelete/deleteAllByProjectId）はBaseRepositoryに追加し、
+     全13コレクション（approvalsはapplications経由の2ホップ）へ一律適用できる
+     ようにした。ビジネスロジックはRepository層でなくService層に置くという
+     CLAUDE.mdの既存方針に合わせた判断。
+✅ 各Repositoryにプロジェクト単位カスケード削除処理を追加
+   （BaseRepository.deleteAllByProjectId / ApprovalRepository.hardDeleteByApplicationId）
+✅ P02画面実装
    └ プロジェクト一覧・新規作成・削除・リセット
-   └ 確認ダイアログ（プロジェクト名入力必須）
-□ 共通ヘッダーにプロジェクト切替ドロップダウン実装
-□ CurrentProjectContext（現在選択中プロジェクトのグローバル状態管理）実装
-□ テーマカラーをCSS変数として全画面に反映する仏組みを実装
-□ サンプルデータ投入機能
-   └ samples/ 配下のサンプルファイルを使って
-     新規プロジェクト作成時に「サンプルデータで開始」選択肢を用意
+   └ 確認ダイアログ（プロジェクト名入力必須・完全一致まで実行不可）
+✅ 共通ヘッダーにプロジェクト切替ドロップダウン実装
+✅ CurrentProjectContext（現在選択中プロジェクトのグローバル状態管理）実装
+   【実装時の判断】新規に別名のContextを作らず、既存ProjectContext.tsxを
+     拡張した（project/loadingは既存のまま、projects/switchProject/
+     refreshProjectsを追加）。useProject()を使う10箇所以上の呼び出し元を
+     一括修正するリスクを避けるため。
+✅ テーマカラーをCSS変数として全画面に反映する仕組みを実装
+   （Layout.tsxのルート要素に--project-accentを設定し、Header左端カラーバー・
+     Sidebarのアクティブ項目ハイライトで参照）
+✅ サンプルデータ投入機能
+   └ samples/ 配下のサンプルファイルをViteの静的アセットとしてimportし、
+     物理構成→申請書作成→一次承認→二次承認→断面確定までを自動実行して
+     published状態まで一括投入する（新規プロジェクト作成時に選択可能）
 ```
 
 **設計書への反映**
 ```
-□ Part4（画面構成・遷移設計）にP02を追加
-□ Part4のサイドメニュー構成・ロール別権限マトリクスを更新
-□ Part5（IndexedDBスキーマ）のprojectsにthemeColorフィールド追加
-□ CLAUDE.mdのルーティング定義にP02を追加
+✅ Part4（画面構成・遷移設計）にP02を追加（実装開始前に反映済みだった）
+✅ Part4のサイドメニュー構成・ロール別権限マトリクスを更新（同上）
+✅ Part5（IndexedDBスキーマ）のprojectsにthemeColorフィールド追加（同上）
+✅ CLAUDE.mdのルーティング定義にP02を追加（同上）
 ```
 
 ---

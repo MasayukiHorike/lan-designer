@@ -62,4 +62,16 @@ export abstract class BaseRepository<T extends BaseDocument> implements IReposit
   async softDelete(id: string, updatedBy: string): Promise<void> {
     await this.update(id, { deleted: true } as Partial<T>, updatedBy);
   }
+
+  /** 物理削除（プロジェクト削除・リセット専用。通常の削除操作ではsoftDeleteを使うこと） */
+  async hardDelete(id: string): Promise<void> {
+    const db = await getDb();
+    await (db as any).delete(this.storeName, id);
+  }
+
+  /** プロジェクトに紐づく全件（削除済み含む）を物理削除する（プロジェクト削除・リセット専用） */
+  async deleteAllByProjectId(projectId: string): Promise<void> {
+    const all = await this.findAllIncludingDeleted(projectId);
+    await Promise.all(all.map((doc) => this.hardDelete(doc._id)));
+  }
 }
