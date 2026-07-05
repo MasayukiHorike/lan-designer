@@ -257,6 +257,126 @@ projectsレコード自体も削除
 
 ---
 
+### Phase2-2: Frame/Signalバージョン管理の是正（Issue #3・#4対応） 📝方針確定・未実装
+
+**背景**
+```
+Issue #3: Frame,Signal参照画面において全てのバージョンのFrameや
+　　　　　Signalが独立表示されてしまう。
+Issue #4: FrameやSignalのバージョン関係が管理されておらず
+　　　　　すべてが独立した要素として並行存在している。
+```
+両Issueは同一の原因に起因するため、まとめて対応する
+（#4がデータモデル上の根本原因、#3がその結果として画面に出る症状）。
+
+**原因調査（`src/services/CommunicationDataReflectionService.ts`）**
+```
+・「変更(verup)」時、resolveFrameDoc/resolveSignalDocは新しい_idで
+  Frame/Signalドキュメントを新規作成するだけで、旧バージョンの
+  ドキュメントを非活性化していない（deleted: falseのまま残る）。
+  versionHistoriesへの記録は行われているが、生きているコレクション
+  側からの「非活性化」が抜けていた。
+
+・applyPortEditsは新バージョンのFrameId/SignalIdに対して新しい
+  FramePort/SignalPortを追加(push)するだけで、旧バージョンを指す
+  既存ポートを削除・付け替えしない。
+
+・この結果、frames/signalsコレクションに新旧バージョンが両方とも
+  deleted: falseの独立ドキュメントとして残り、ECUのconnectorには
+  新旧両方のFrameId/SignalIdを指すポートが残る。P30ツリー
+  （FrameSignalTreeService.buildFrameSignalTree）はconnectorの
+  全FramePortを辿るだけなので、新旧バージョンが別々の独立した
+  項目として並行表示される（Issue #3の症状）。
+
+・そもそもデータモデルに「これは同一Frame/Signalの旧版である」
+  というリンク（isLatestやsupersededBy等の関連フィールド）が
+  存在せず、name+variantNoが一致する別ドキュメントというだけの
+  緩い関連しかない（Issue #4の根本原因）。
+
+・同種の「name+variantNoで最新バージョンを求める」ロジックが
+  ApplicationService.latestNonDeletedByKey /
+  GwRouteService.latestFrame / CommunicationDataReflectionService.
+  latestOf の3箇所に重複実装されており、Level1CheckServiceの
+  existingFrames/existingSignals解決（.find()で先頭一致を採用）は
+  最新版でなく配列内の最初の一致を拾ってしまう潜在バグがある。
+
+・Snapshot機構（SnapshotService）はFrame/Signalの_idをそのまま
+  スナップショットに保存し、後で findById で当時のデータを
+  再構成する設計になっている。そのため「verup時は同一_idのまま
+  内容を上書きする」方式には変更できない（過去断面の内容が
+  後から書き換わってしまう）。_idを維持したまま更新する方式は
+  不採用とし、新規ドキュメント作成方式は維持した上で
+  「現在有効な版」を明示するフラグを追加する方針とする。
+```
+
+**対応方針：Frame/Signalに`isLatest: boolean`フィールドを追加する**
+```
+・frames/signalsスキーマに isLatest: boolean を追加する
+　（verup時、旧ドキュメントはisLatest: falseに更新。新規作成
+  ドキュメントはisLatest: trueとして作成する。deletedとは独立した
+  フラグとし、「削除された」と「新版に置き換わった」を区別する）
+
+・verup時、既存の「変更(verup)」処理で旧ドキュメントに対して
+　recordVersionHistory実行後、isLatest: falseへの更新を追加する
+
+・Frame verup時、この操作で明示的にコマンドが指定されなかった
+　（＝内容変更なしの）配下Signalを新Frameのframeidへ再紐付けする
+　処理を追加する（これを行わないと、内容が変わっていないだけの
+　Signalが旧（非活性）Frameの配下に取り残され、新Frameの配下
+　から見えなくなってしまう）
+
+・「現在の設計状態」を表示・チェックする全ての参照系に
+　isLatestフィルタ（!deleted && isLatest）を適用する。
+　対象：
+　　- FrameSignalTreeService（P30ツリー）
+　　- SubsetMatrixService（P31サブセット別参照・P60全体通信マトリクス出力）
+　　- EcuPortMatrixService（P40 ECU Port参照）
+　　- Level2CheckService（サブセット単位チェック）
+　　- ApplicationService.latestNonDeletedByKey
+　　（Level1チェック用コンテキスト構築。isLatestベースに簡略化）
+
+　※VersionCompareService（P22の変化点表示・直前バージョン取得）は
+　　意図的に「過去バージョンとの比較」を行う機能のため対象外
+　　（isLatestで絞り込まない）。SnapshotServiceも断面確定時点の
+　　published一覧を対象とする既存ロジックのままで良く、変更不要。
+
+・CommunicationDataReflectionService.latestOf /
+　GwRouteService.latestFrame の重複実装は、isLatestベースの
+　解決に統一して簡略化する。
+```
+
+**実装タスク（未着手）**
+```
+🔲 schema.ts: Frame/Signalに isLatest: boolean を追加
+🔲 CommunicationDataReflectionService.ts
+　　🔲 追加/変更(verup)時にisLatestを設定
+　　🔲 変更(verup)時、旧ドキュメントをisLatest: falseに更新
+　　🔲 Frame verup時の未変更子Signalのframeid再紐付け(carry-over)処理
+🔲 読み取り側へのisLatestフィルタ適用
+　　🔲 FrameSignalTreeService
+　　🔲 SubsetMatrixService
+　　🔲 EcuPortMatrixService
+　　🔲 Level2CheckService
+🔲 ApplicationService.latestNonDeletedByKeyをisLatestベースに簡略化
+🔲 GwRouteService.latestFrameをisLatestベースに簡略化（任意・重複排除）
+🔲 サンプルデータ・既存投入データがある場合はisLatest未設定分の
+　　整合性を確認（新規投入分は自動的にtrueとなるため、開発中DBの
+　　リセットで対応可能な場合は移行処理は不要と判断）
+🔲 動作確認：verupシナリオ（Frameのみ変更／Signal追加を伴うverup／
+　　Signal変更なしverup）をブラウザで一通り目視確認
+```
+
+**設計書への反映（未実施）**
+```
+🔲 Part5（IndexedDBスキーマ）: frames/signalsコレクションに
+　　isLatestフィールドを追記
+🔲 Part3 §10（バージョン管理）: isLatestフラグによる
+　　「現在有効な版」の管理方式、および参照系は
+　　deleted/isLatestの両方でフィルタする方針を明記
+```
+
+---
+
 ## 5. 今後のタスク管理方針
 
 ```
