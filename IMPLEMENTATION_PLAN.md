@@ -306,73 +306,114 @@ Issue #4: FrameやSignalのバージョン関係が管理されておらず
   内容を上書きする」方式には変更できない（過去断面の内容が
   後から書き換わってしまう）。_idを維持したまま更新する方式は
   不採用とし、新規ドキュメント作成方式は維持した上で
-  「現在有効な版」を明示するフラグを追加する方針とする。
+  各ドキュメントに前後バージョンへの明示的な関連を持たせる
+  方針とする。
 ```
 
-**対応方針：Frame/Signalに`isLatest: boolean`フィールドを追加する**
+**対応方針：Frame/Signalに前後バージョンへの参照フィールドを追加する**
 ```
-・frames/signalsスキーマに isLatest: boolean を追加する
-　（verup時、旧ドキュメントはisLatest: falseに更新。新規作成
-  ドキュメントはisLatest: trueとして作成する。deletedとは独立した
-  フラグとし、「削除された」と「新版に置き換わった」を区別する）
+【方針転換の経緯】
+当初はisLatest: boolean（現在有効な版かどうかのフラグ）のみを
+追加する方針を検討したが、「過去・未来のバージョン関係を
+明確にしたい」という要望を踏まえ、単なる真偽値ではなく
+前後バージョンのドキュメントを直接たどれる参照フィールドを
+持たせる方式に変更する。
 
-・verup時、既存の「変更(verup)」処理で旧ドキュメントに対して
-　recordVersionHistory実行後、isLatest: falseへの更新を追加する
+・frames/signalsスキーマに以下2フィールドを追加する
+　　previousVersionId: string | null
+　　　→ このバージョンが置き換えた直前バージョンの_id（過去方向）
+　　　　初版の場合はnull
+　　nextVersionId: string | null
+　　　→ このバージョンをverupで置き換えた次バージョンの_id（未来方向）
+　　　　現在有効な最新版の場合はnull
+　（同一コレクション内の自己参照。Frame→Frame、Signal→Signal）
+
+・「現在有効な最新版かどうか」は nextVersionId === null && !deleted
+　で判定する（isLatestのような別フラグは持たず、リンクの有無から
+  導出する。二重管理による不整合を避けるため）
+
+・verup時の更新内容
+　　新規ドキュメント：previousVersionId = 旧ドキュメントの_id、
+  　　　　　　　　　　nextVersionId = null
+　　旧ドキュメント　：nextVersionId = 新ドキュメントの_id に更新
+  　　　　　　　　　　（recordVersionHistoryによる履歴記録と併せて実施）
+　　　　　　　　　　　previousVersionIdは変更しない（そのまま維持）
+
+・「追加」（初版）時：previousVersionId = null、nextVersionId = null
 
 ・Frame verup時、この操作で明示的にコマンドが指定されなかった
 　（＝内容変更なしの）配下Signalを新Frameのframeidへ再紐付けする
 　処理を追加する（これを行わないと、内容が変わっていないだけの
-　Signalが旧（非活性）Frameの配下に取り残され、新Frameの配下
-　から見えなくなってしまう）
+　Signalが旧（非activeな）Frameの配下に取り残され、新Frameの配下
+　から見えなくなってしまう。これはisLatest方式・リンク方式の
+　どちらを採るかに関わらず必要な対応）
 
 ・「現在の設計状態」を表示・チェックする全ての参照系に
-　isLatestフィルタ（!deleted && isLatest）を適用する。
+　現在版フィルタ（!deleted && nextVersionId === null）を適用する。
 　対象：
 　　- FrameSignalTreeService（P30ツリー）
 　　- SubsetMatrixService（P31サブセット別参照・P60全体通信マトリクス出力）
 　　- EcuPortMatrixService（P40 ECU Port参照）
 　　- Level2CheckService（サブセット単位チェック）
 　　- ApplicationService.latestNonDeletedByKey
-　　（Level1チェック用コンテキスト構築。isLatestベースに簡略化）
+　　（Level1チェック用コンテキスト構築。nextVersionIdベースに簡略化）
+　　- CommunicationDataReflectionService（Excel反映時の「既存」解決）
+　　- GwRouteService.latestFrame（GW例外指定Excel反映時のFrame解決）
 
 　※VersionCompareService（P22の変化点表示・直前バージョン取得）は
-　　意図的に「過去バージョンとの比較」を行う機能のため対象外
-　　（isLatestで絞り込まない）。SnapshotServiceも断面確定時点の
-　　published一覧を対象とする既存ロジックのままで良く、変更不要。
+　　このリンクを使うことで大幅に簡略化できる。現状は全件取得＋
+　　name/variantNo一致＋バージョン文字列比較(compareVersions)で
+　　直前バージョンを探索しているが、previousVersionIdを使えば
+　　frameRepo.findById(frame.previousVersionId) で一発解決できる。
+　　（compareVersionsによる探索ロジックが丸ごと不要になる）
+　　SnapshotServiceは断面確定時点のpublished一覧を対象とする
+　　既存ロジックのままで良く、変更不要。
 
-・CommunicationDataReflectionService.latestOf /
-　GwRouteService.latestFrame の重複実装は、isLatestベースの
-　解決に統一して簡略化する。
+・P33/P34（Frame/Signal詳細画面）の「バージョン履歴」欄は、
+　将来的にpreviousVersionIdを繰り返したどることで全履歴を
+　一覧表示できるようになる（今回のスコープでは直前バージョンの
+　表示のみ据え置き、UI拡張は別タスクとして切り出す）
 ```
 
 **実装タスク（未着手）**
 ```
-🔲 schema.ts: Frame/Signalに isLatest: boolean を追加
+🔲 schema.ts: Frame/Signalに
+　　previousVersionId: string | null
+　　nextVersionId: string | null
+　　を追加
 🔲 CommunicationDataReflectionService.ts
-　　🔲 追加/変更(verup)時にisLatestを設定
-　　🔲 変更(verup)時、旧ドキュメントをisLatest: falseに更新
+　　🔲 追加(初版)時：previousVersionId/nextVersionIdをnullで設定
+　　🔲 変更(verup)時：新ドキュメントのpreviousVersionIdに旧_idを設定
+　　🔲 変更(verup)時：旧ドキュメントのnextVersionIdに新_idを設定
+　　　　（recordVersionHistoryと同じタイミングで実施）
 　　🔲 Frame verup時の未変更子Signalのframeid再紐付け(carry-over)処理
-🔲 読み取り側へのisLatestフィルタ適用
+　　🔲 「既存」解決ロジックをnextVersionId === nullベースに変更
+🔲 読み取り側へ現在版フィルタ（nextVersionId === null）を適用
 　　🔲 FrameSignalTreeService
 　　🔲 SubsetMatrixService
 　　🔲 EcuPortMatrixService
 　　🔲 Level2CheckService
-🔲 ApplicationService.latestNonDeletedByKeyをisLatestベースに簡略化
-🔲 GwRouteService.latestFrameをisLatestベースに簡略化（任意・重複排除）
-🔲 サンプルデータ・既存投入データがある場合はisLatest未設定分の
-　　整合性を確認（新規投入分は自動的にtrueとなるため、開発中DBの
-　　リセットで対応可能な場合は移行処理は不要と判断）
+🔲 ApplicationService.latestNonDeletedByKeyをnextVersionIdベースに簡略化
+🔲 GwRouteService.latestFrameをnextVersionIdベースに簡略化
+🔲 VersionCompareService.getPreviousFrameVersion/
+　　getPreviousSignalVersionをpreviousVersionId参照に置き換えて簡略化
+　　（compareVersionsによる全件探索ロジックを削除）
+🔲 サンプルデータ・既存投入データがある場合の整合性確認
+　　（新規投入分は自動的にnull/nullまたは正しいリンクが張られるため、
+　　開発中DBのリセットで対応可能な場合は移行処理は不要と判断）
 🔲 動作確認：verupシナリオ（Frameのみ変更／Signal追加を伴うverup／
-　　Signal変更なしverup）をブラウザで一通り目視確認
+　　Signal変更なしverup／3世代以上のverupを重ねた場合のリンクの
+　　繋がり）をブラウザで一通り目視確認
 ```
 
 **設計書への反映（未実施）**
 ```
 🔲 Part5（IndexedDBスキーマ）: frames/signalsコレクションに
-　　isLatestフィールドを追記
-🔲 Part3 §10（バージョン管理）: isLatestフラグによる
-　　「現在有効な版」の管理方式、および参照系は
-　　deleted/isLatestの両方でフィルタする方針を明記
+　　previousVersionId / nextVersionId フィールドを追記
+🔲 Part3 §10（バージョン管理）: 前後バージョンをprevious/nextVersionId
+　　の自己参照リンクで管理する方式、「現在有効な版」は
+　　nextVersionId === null && !deleted で判定する方針、
+　　参照系は必ずこの条件でフィルタする方針を明記
 ```
 
 ---
