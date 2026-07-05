@@ -257,7 +257,7 @@ projectsレコード自体も削除
 
 ---
 
-### Phase2-2: Frame/Signalバージョン管理の是正（Issue #3・#4対応） 📝方針確定・未実装
+### Phase2-2: Frame/Signalバージョン管理の是正（Issue #3・#4対応） 📝設計書反映済み・実装未着手
 
 **背景**
 ```
@@ -406,14 +406,16 @@ Issue #4: FrameやSignalのバージョン関係が管理されておらず
 　　繋がり）をブラウザで一通り目視確認
 ```
 
-**設計書への反映（未実施）**
+**設計書への反映**
 ```
-🔲 Part5（IndexedDBスキーマ）: frames/signalsコレクションに
+✅ Part5（IndexedDBスキーマ）: frames/signalsのJSON例に
 　　previousVersionId / nextVersionId フィールドを追記
-🔲 Part3 §10（バージョン管理）: 前後バージョンをprevious/nextVersionId
-　　の自己参照リンクで管理する方式、「現在有効な版」は
+✅ Part3 §10（バージョン管理）: verup時に新規ドキュメントを
+　　作成する方式の理由、previous/nextVersionIdの自己参照リンクで
+　　前後バージョンを管理する方式、「現在有効な版」は
 　　nextVersionId === null && !deleted で判定する方針、
-　　参照系は必ずこの条件でフィルタする方針を明記
+　　参照系は必ずこの条件でフィルタする方針、Frame verup時の
+　　未変更子Signal再紐付け方針を明記
 ```
 
 ---

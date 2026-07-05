@@ -228,10 +228,51 @@ Step7: 断面確定（LAN設計者）
 　└ 形式：メジャー-マイナー（00-a, 01-a, 01-b 等）
 　└ 将来：変更プロパティ検出による自動採番
 
+【verup時のドキュメント作成方式】
+　└ 「変更(verup)」コマンドでは既存ドキュメントを上書きせず、
+　　 新しい_idを持つドキュメントを新規作成する
+　　 （SnapshotServiceが過去のFrame/Signal _idからその時点の
+　　 データをfindByIdで再構成する設計のため、_idを維持したまま
+　　 内容を上書きする方式は採用しない）
+　└ 置き換えられた旧ドキュメントはversionHistoriesへ
+　　 スナップショットとして記録した上でDB上にも残す
+　　 （物理削除しない。過去断面参照時の当時の状態表示に必要）
+
+【前後バージョンの関連管理（previousVersionId / nextVersionId）】
+　└ frames・signalsの各ドキュメントは以下2フィールドで
+　　 前後バージョンへの自己参照リンクを持つ
+　　 　previousVersionId: string | null
+　　 　　→ このバージョンが置き換えた直前バージョンの_id（過去方向）
+　　 　　　初版の場合はnull
+　　 　nextVersionId: string | null
+　　 　　→ このバージョンをverupで置き換えた次バージョンの_id（未来方向）
+　　 　　　現在有効な最新版の場合はnull
+　└ 「現在有効な最新版かどうか」は
+　　 nextVersionId === null && !deleted で判定する
+　　 （別途「最新版フラグ」は持たない。リンクの有無から導出することで
+　　 　フラグとリンクの二重管理・不整合を防ぐ）
+　└ verup時の更新内容
+　　 　新規ドキュメント：previousVersionId = 旧ドキュメントの_id、
+　　 　　　　　　　　　　nextVersionId = null
+　　 　旧ドキュメント　：nextVersionId = 新ドキュメントの_id に更新
+　　 　　　　　　　　　　（previousVersionIdは変更しない）
+　└ 「追加」（初版）時：previousVersionId = null、nextVersionId = null
+　└ Frame・Signal参照系（P30ツリー・P31/P60マトリクス・P40 ECU Port・
+　　 Level1/Level2チェック等、「現在の設計状態」を扱う全ての処理）は
+　　 必ず nextVersionId === null && !deleted で絞り込み、
+　　 旧バージョンが現行データと並行して独立表示・誤検出されないようにする
+　└ 直前バージョンとの比較（P22変化点表示等）はprevious VersionIdを
+　　 たどって取得する（バージョン文字列の大小比較による探索は行わない）
+　└ Frame がverupされた際、当該申請内で内容変更が指定されなかった
+　　 （コマンド空白の）配下Signalは、新Frameのframeidへ
+　　 再紐付けする（旧Frame配下に取り残されないようにする）
+
 【削除要素のバージョン管理】
 　└ 削除フラグ（deleted: true）で論理削除
 　└ 削除バージョンとして履歴に保持
 　└ 過去断面参照時は当時の状態を表示
+　└ deletedとnextVersionIdは独立した概念（「削除された」と
+　　 「新版に置き換わった」は区別する）
 ```
 
 ---

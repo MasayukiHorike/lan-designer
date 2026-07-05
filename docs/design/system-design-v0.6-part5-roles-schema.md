@@ -173,6 +173,8 @@
   "powerSource": ["+B", "IG"],
   "eventFlag": true,
   "versionNo": "01-a",
+  "previousVersionId": "frames/UUID-OLD",
+  "nextVersionId": null,
   "e2e": {
     "enabled": true,
     "profile": "P02",
@@ -211,6 +213,8 @@
   "initialValue": 0,
   "failValue": 255,
   "versionNo": "01-a",
+  "previousVersionId": "signals/UUID-OLD",
+  "nextVersionId": null,
   "status": "published",
   "deleted": false
 }
