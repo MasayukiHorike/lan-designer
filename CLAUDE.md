@@ -137,7 +137,8 @@ src/
 │   ├── base/
 │   │   ├── IRepository.ts
 │   │   └── BaseRepository.ts
-│   ├── ProjectRepository.ts     # create/delete/reset（カスケード削除含む）を持つ
+│   ├── ProjectRepository.ts     # findAllProjects()のみ。create/delete/resetは
+│   │                             # ProjectManagementService.tsに実装（下記参照）
 │   ├── VariantRepository.ts
 │   ├── EcuRepository.ts
 │   ├── BusRepository.ts
@@ -163,7 +164,9 @@ src/
 │   ├── ApprovalService.ts
 │   ├── GwRouteService.ts
 │   ├── SnapshotService.ts
-│   └── SampleDataService.ts   # Phase2-1: samples/配下データの初期投入
+│   ├── ReviewEditService.ts       # LAN承認者による二次審査中の直接編集・Excel再インポート
+│   ├── ProjectManagementService.ts # Phase2-1: createProject/resetProject/deleteProject
+│   └── SampleDataService.ts       # Phase2-1: samples/配下データの初期投入
 ├── types/               # 型定義
 │   ├── schema.ts        # DBスキーマ全型定義
 │   ├── excel.ts         # Excelフォーマット型定義
@@ -174,7 +177,11 @@ src/
 │   └── applicationNo.ts # 申請書番号採番
 ├── contexts/            # React Context
 │   ├── RoleContext.tsx        # ロール管理
-│   └── CurrentProjectContext.tsx  # Phase2-1: 現在選択中プロジェクトのグローバル状態管理
+│   └── ProjectContext.tsx     # 現在選択中プロジェクトのグローバル状態管理
+│                               # Phase2-1でprojects一覧・switchProject・refreshProjects
+│                               # を追加（既存のuseProject()フックは非破壊で拡張のみ。
+│                               # 新規にCurrentProjectContextを作らなかった理由は
+│                               # 下記「プロジェクト管理機能」参照）
 ├── hooks/               # カスタムフック
 ├── db/                  # IndexedDB初期化
 │   └── database.ts
@@ -353,28 +360,123 @@ P23（/applications/:id/approve）は廃止。承認操作のUIはP22内に
 ・一覧参照・プロジェクト切替：全ロール可能
 ・新規作成・削除・リセット・テーマカラー設定：LAN設計者のみ
 ・削除・リセットは物理削除。プロジェクト名を入力させて
-  一致した場合のみ実行可能とする確認ダイアログを必須とする。
+  一致した場合のみ実行可能とする確認ダイアログを必須とする
+  （src/pages/P02_Projects/P02_Projects.tsx内のNameConfirmDialog）。
 
-【カスケード削除・リセットの対象コレクション】
-ecus / buses / frames / signals / applications / approvals /
-gwRoutes / snapshots / changelogs / versionHistories /
-subsetHistories / variants / accessControls
+【カスケード削除・リセットの実装（設計時の想定から変更あり）】
+・ProjectRepository自体にはcreate/delete/resetを実装せず、
+  新規のsrc/services/ProjectManagementService.tsに集約した
+  （ビジネスロジックはRepository層でなくService層に置くという
+  既存方針との一貫性を優先）。
+・削除・リセットの実体はBaseRepositoryに追加した
+  hardDelete(id) / deleteAllByProjectId(projectId) を全Repositoryが
+  継承する形で共通化。approvalsのみprojectIdを持たないため、
+  ApprovalRepository.hardDeleteByApplicationId(applicationId)で
+  applications経由の2ホップで削除する。
+・対象コレクション：ecus / buses / frames / signals / applications /
+  approvals / gwRoutes / snapshots / changelogs / versionHistories /
+  subsetHistories / variants / accessControls
 ・リセット：上記を全削除し、projectsレコード自体は保持
 ・削除　　：上記を全削除し、projectsレコード自体も削除
+・作業中プロジェクトを削除・リセットした場合：他の既存プロジェクトへ
+  自動切替、無ければ新規デフォルトプロジェクトを自動生成する
+  （ProjectContext.tsxのload()が空リスト時に自動生成する既存ロジックを
+  そのまま利用）。
 
 【共通ヘッダーのプロジェクト切替】
 ・全画面共通のヘッダーバーにドロップダウンを常設
 ・全ロールがいつでも切替可能（P02を開かなくてもよい）
-・選択中プロジェクトのthemeColorをヘッダー背景色等に反映する
-・CurrentProjectContextで現在選択中プロジェクトIDをグローバル管理し、
-  各RepositoryのfindメソッドはこのコンテキストのprojectIdを使用する
+・新規にCurrentProjectContextは作らず、既存のProjectContext.tsx
+  （useProject()）を拡張した：project/loadingは既存のまま、
+  projects（一覧）・switchProject・refreshProjectsを追加。
+  useProject()を使う既存10箇所以上を書き換えずに済ませるための判断。
+・選択中プロジェクトIDはlocalStorage（キー：
+  lan-designer:selectedProjectId）で永続化する
+  （RoleContextの永続化パターンを踏襲）。
+
+【テーマカラーの適用範囲（ユーザーフィードバックにより方針変更）】
+・当初はヘッダー左端の細いカラーバーのみで表現していたが、
+  「明るすぎる／背景色を変えてほしい」というフィードバックにより、
+  ヘッダー・サイドバー全体の背景色をテーマカラーで塗る方式に変更した。
+・Layout.tsxのルート要素にCSS変数--project-accentを設定し、
+  Header.tsx（bg-[var(--project-accent)]）・Sidebar.tsx
+  （同上）・SidebarMenuItem.tsx（アクティブ項目はbg-white/20など
+  白の半透明オーバーレイ）から参照する。背景色そのものを差し替えても
+  白文字の可読性が保てるよう、固定パレット（src/constants/projectTheme.ts）
+  は元の案より暗いトーン（Tailwindでいう800番台相当）に統一している。
+・ドロップダウン等の浮遊パネルはテーマカラーに追従させず、
+  常にbg-slate-800（ニュートラル）を使う（可読性優先）。
+
+【サイドバーのアイコン・折り畳み】
+・src/constants/menu.tsの各MenuItemにlucide-reactのicon
+  （LucideIcon型）を追加必須とした。
+・サイドバー全体の折り畳み（幅60→12のアイコンのみレールに変更、
+  localStorageキー：lan-designer:sidebarCollapsed）を追加。
+  既存の「グループ単位の折り畳み」（▼マスタ管理 等）とは別機能。
+  折り畳み時はグループを解いて全項目をフラットなアイコンリストとして
+  表示し、クリック操作（NavLink・権限判定）は折り畳み前と同一のまま
+  維持する（アイコンだけの見た目にするために別実装を作らない）。
 
 【サンプルデータ投入】
-・新規プロジェクト作成時に「サンプルデータで開始」を選択可能
-・samples/ 配下のファイルをSampleDataServiceで読み込み、
-  Excelインポートサービス経由でDBに投入する
-  （直接Repositoryに書き込まず、既存のImportService/CheckServiceの
-  経路を通すことでLevel1/2チェック済みの整合性あるデータにする）
+・新規プロジェクト作成時に「サンプルデータで開始」を選択可能。
+・単に物理構成のみでなく、物理構成＋通信データ＋GW例外指定を
+  投入したうえで、申請書作成→一次承認→二次承認→断面確定まで
+  SampleDataService内でApplicationService/SnapshotServiceの
+  既存関数を順に呼んで自動実行し、published状態まで持っていく
+  （「触ってすぐ試せる」状態を再現するため）。
+・samples/配下の実ファイルをViteの静的アセットとして
+  `?url`importし、fetchで取得したBlobを既存のパース・チェック・
+  反映パイプラインにそのまま流す（Excel相当データをコード側で
+  再生成せず、既存の整合したサンプルファイルを単一のソースとする）。
+```
+
+---
+
+## LAN承認者による直接編集・Excel再インポート（Phase1-4以降で実装）
+
+```
+【背景】
+設計書（Part3 §8、Part4 P22モックアップ）には当初から
+「二次審査（in_review_2nd）中のLAN承認者はExcel再インポートまたは
+画面直接編集ができる」と記載されていたが、「Phase1-4のDB取込機能
+実装後に対応予定」として保留されていた。DB取込機能の実装完了後に
+この保留機能を実装した。
+
+【対象範囲】
+・この申請書がapplicationIdとして持ち込んだFrame/Signalのみが対象
+  （他の申請書や既存publishedデータは対象外）。
+・操作可能なのは現在の対応順のLAN承認者のみ（承認操作パネルと
+  同じcanActOnSlot判定を流用）。
+
+【画面直接編集】
+・src/services/ReviewEditService.ts が本体。editFrameProperties /
+  editSignalProperties で対象ドキュメントをパッチ更新する。
+・versionNoは変更せず、VersionHistoryも作成しない。変更内容は
+  Application.editHistories（既存スキーマにmethod:'excel'|'manual'
+  で定義済みだった）にのみ記録する。
+・FrameDetailView/SignalDetailViewにeditable/onSaveProperties/
+  onUpsertPort/onRemovePortの各propsを追加し、既存の読み取り専用
+  呼び出し元（P33/P34の独立ポップアップ等）はpropsを渡さないことで
+  非破壊のまま維持している。
+・FramePort/SignalPort編集後はそのFrameのGWルートを
+  regenerateGwRoutesForFrame（既存関数を無変更のまま再利用）で
+  自動再生成する。
+
+【Excel再インポート】
+・ApplicationService.registerCommunicationDataFileと同じ
+  パイプライン（Level1→DB反映→Level2）を再利用するが、
+  ctx.statusに申請書の現在ステータス（in_review_2nd）を
+  渡すためFrame/Signalのステータスは退行しない。
+
+【承認状態への非干渉】
+・上記いずれの編集もapplication.status/firstStageTurn/
+  secondStageTurn/approversを一切変更しない
+  （＝一次承認やり直し不要。設計書の記載と整合）。
+
+【編集履歴の表示】
+・P22に「編集履歴」セクションを常時表示し、editHistoriesを
+  新しい順に一覧表示する（教訓4「書くだけで終わらせない」の
+  再発防止として、実装直後に表示側も必ず作る）。
 ```
 
 ---
@@ -482,6 +584,38 @@ Phase1-3（申請・承認フロー）の初期実装では、ビルド・単発
 　　（現在選択中プロジェクトが削除された場合の遷移先を用意する）
 　・カスケード削除の対象コレクションに漏れがないか
 　　（Part5のカスケード対象一覧と実装を突き合わせて確認する）
+
+【不備6】通信データExcelの「変更(verup)」「削除」コマンドが
+　　　　常に「未登録（または削除済み）の要素にはコマンド指定不可」
+　　　　エラーになり、実質バージョンアップができなかった
+　原因：Level1チェック用のCommunicationDataCheckContextを組み立てる
+　　　箇所（P21_Create.tsxのbuildContext等）が、existingFrames/
+　　　existingSignalsに常に空配列を渡していた。既存要素の有無を
+　　　空配列との照合で判定していたため、既存要素が実際にDBに
+　　　あっても「未登録」と誤判定されていた。ハッピーパス（新規
+　　　「追加」コマンドのみ）の検証では顕在化せず、実運用で
+　　　「変更(verup)」を試して初めて発覚した。
+　対策：ApplicationService.buildCommunicationDataCheckContext()を
+　　　新設し、DBの現在の最新有効バージョン（name+variantNo単位で
+　　　削除済みを除く最新versionNo）を正しく積んで返すよう統一。
+　　　「チェックに渡すコンテキストが実際のDB状態を正しく反映して
+　　　いるか」は、追加コマンドだけでなく変更・削除コマンドも
+　　　含めて検証すること。
+
+【不備7】React.StrictMode下でデフォルトプロジェクトが2件
+　　　　重複生成された
+　原因：ProjectContextのuseEffectはStrictMode（開発時のみ）で
+　　　二重実行される。「プロジェクトが0件なら自動生成する」
+　　　処理がfindAllProjects()の非同期完了を待ってから作成する
+　　　実装だったため、2つの並行呼び出しがどちらも「0件」を見て
+　　　しまい、両方が生成を実行するTOCTOU競合が発生した。単発の
+　　　動作確認では発覚せず、P02でプロジェクト一覧を実際に
+　　　表示して初めて重複に気づいた。
+　対策：作成中のPromiseをモジュール単位でシングルトン共有し
+　　　（getDb()のdbPromiseと同じパターン）、後続の並行呼び出しは
+　　　同じPromiseを待つようにして二重生成を防いだ。「初回のみ
+　　　実行されるべき副作用」を書いたら、StrictMode下の二重
+　　　マウントで競合しないかを疑うこと。
 ```
 
 ---

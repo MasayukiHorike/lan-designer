@@ -129,8 +129,7 @@ Step5: 承認フロー（順番制・Phase1-3にて確定）
 　└ 一次承認者の待ち行列を全員承認・回覧完了 → in_review_2ndへ
 　└ 差し戻し → draftへ（コメント必須・回覧不要で即座に遷移）
 　└ 二次承認（LAN承認者・待ち行列）
-　　 └ Excel再インポートまたは画面直接編集はPhase1-4
-　　 　（DB取込機能）実装後に対応予定
+　　 └ Excel再インポートまたは画面直接編集（実装済み。詳細下記§8）
 　　 └ 待ち行列を全員承認・回覧完了 → approvedへ
 　　 └ 却下 → draftへ（コメント必須・回覧不要で即座に遷移）
 　└ 承認・差し戻し・却下は必ずapprovalsにコメント付きで記録し、
@@ -182,12 +181,21 @@ Step7: 断面確定（LAN設計者）
 　└ 申請書詳細画面（P22）で申請書・インポート内容・
 　　 チェック結果を確認し、同一画面内の操作パネルで判定する
 　└ インポートExcelダウンロード可能
-　└ Excel再インポートまたは画面直接編集
-　　 └ Frame/Signalプロパティ編集
-　　 └ FramePort/SignalPort編集
-　　 └ Phase1-4（DB取込機能）実装後に対応予定
-　└ 編集履歴を申請書に記録
-　└ 一次承認やり直し不要
+　└ Excel再インポートまたは画面直接編集（実装済み）
+　　 └ 対象はこの申請書が持ち込んだFrame/Signalのみ、
+　　 　操作可能なのは現在の対応順のLAN承認者のみ
+　　 └ Frame/Signalプロパティ編集（versionNoは変更しない。
+　　 　変更内容はeditHistoriesにのみ記録し、VersionHistoryは作らない）
+　　 └ FramePort/SignalPort編集（編集後、そのFrameのGWルートを
+　　 　自動再生成する）
+　　 └ Excel再インポートはdraft時の登録と同じLevel1→DB反映→Level2の
+　　 　パイプラインを再利用するが、ステータスはin_review_2ndのまま
+　　 　退行しない
+　　 └ 実装：src/services/ReviewEditService.ts（詳細はCLAUDE.md
+　　 　「LAN承認者による直接編集・Excel再インポート」章を参照）
+　└ 編集履歴を申請書に記録（P22に常時表示。method:'excel'|'manual'）
+　└ 一次承認やり直し不要（上記編集はstatus/firstStageTurn/
+　　 secondStageTurn/approversを一切変更しないことで担保）
 　└ 待ち行列を全員承認・回覧完了 → approvedへ
 　└ 却下 → draftへ（コメント必須・回覧不要で即座に遷移）
 　↓
