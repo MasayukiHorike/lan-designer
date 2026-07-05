@@ -16,6 +16,7 @@ import { P30_FrameSignal } from './pages/P30_FrameSignal/P30_FrameSignal';
 import { P31_SubsetView } from './pages/P31_SubsetView/P31_SubsetView';
 import { P33_FrameDetail } from './pages/P33_FrameDetail/P33_FrameDetail';
 import { P34_SignalDetail } from './pages/P34_SignalDetail/P34_SignalDetail';
+import { P35_BitLayoutEditor } from './pages/P35_BitLayoutEditor/P35_BitLayoutEditor';
 import { P40_EcuPort } from './pages/P40_EcuPort/P40_EcuPort';
 import { P50_Snapshots } from './pages/P50_Snapshots/P50_Snapshots';
 import { P51_Changelogs } from './pages/P51_Changelogs/P51_Changelogs';
@@ -33,6 +34,7 @@ export function App() {
               <Route path="/role" element={<P00_RoleSwitch />} />
               <Route element={<RequireRole />}>
                 <Route path="/frames/:frameId" element={<P33_FrameDetail />} />
+                <Route path="/frames/:frameId/bit-layout-editor" element={<P35_BitLayoutEditor />} />
                 <Route path="/signals/:signalId" element={<P34_SignalDetail />} />
                 <Route element={<Layout />}>
                   <Route path="/" element={<P01_Home />} />

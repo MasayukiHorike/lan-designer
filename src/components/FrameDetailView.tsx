@@ -598,7 +598,24 @@ export function FrameDetailView({
       )}
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="mb-2 text-sm font-semibold text-slate-700">ビット配置マトリクス</h3>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-700">ビット配置マトリクス</h3>
+          {editable && (
+            <button
+              type="button"
+              onClick={() =>
+                // P35は保存後にwindow.openerを再読込するため、他の独立画面と異なりnoopenerを付けない
+                window.open(
+                  `${window.location.pathname}#/frames/${frame._id.split('/')[1]}/bit-layout-editor?applicationId=${encodeURIComponent(frame.applicationId)}`,
+                  '_blank',
+                )
+              }
+              className="rounded border border-blue-300 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
+            >
+              ビット配置をグラフィック編集
+            </button>
+          )}
+        </div>
         <BitMatrix
           dlc={frame.dlc}
           e2eEnabled={frame.e2e.enabled}
