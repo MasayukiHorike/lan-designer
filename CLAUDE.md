@@ -281,6 +281,7 @@ const routes = [
   { path: '/frame-signal/subset',           component: P31_SubsetView },
   { path: '/frames/:frameId',               component: P33_FrameDetail },
   { path: '/signals/:signalId',             component: P34_SignalDetail },
+  { path: '/frames/:frameId/bit-layout-editor', component: P35_BitLayoutEditor }, // Phase2-4新設（Issue #6対応）
   { path: '/ecu-port',                      component: P40_EcuPort },
   { path: '/snapshots',                     component: P50_Snapshots },
   { path: '/changelogs',                    component: P51_Changelogs },
