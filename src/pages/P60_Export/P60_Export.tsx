@@ -44,7 +44,7 @@ export function P60_Export() {
     variantRepo.findByProjectId(project._id).then(setVariants);
     applicationRepo.findByProjectId(project._id).then(setApplications);
     ecuRepo.findByProjectId(project._id).then(setEcus);
-    frameRepo.findByProjectId(project._id).then(setFrames);
+    frameRepo.findByProjectId(project._id).then((list) => setFrames(list.filter((f) => f.nextVersionId === null)));
   }, [project]);
 
   // ① 全体通信マトリクスExcel出力

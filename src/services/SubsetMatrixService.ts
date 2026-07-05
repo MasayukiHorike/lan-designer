@@ -86,9 +86,12 @@ export async function buildSubsetMatrix(
     if (snapshotIds && !snapshotIds.frameIds.has(frameId)) continue;
     const frame = await frameRepo.findById(frameId);
     if (!frame || frame.deleted) continue;
+    // 過去断面表示（snapshotIds指定時）は現在版フィルタを適用しない
+    if (!snapshotIds && frame.nextVersionId !== null) continue;
 
     const signals = await signalRepo.findByFrameId(frame._id);
     const signalRows: MatrixRow[] = signals
+      .filter((s) => !!snapshotIds || s.nextVersionId === null)
       .filter((s) => !snapshotIds || snapshotIds.signalIds.has(s._id))
       .map((s) => ({
         id: s._id,

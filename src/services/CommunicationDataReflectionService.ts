@@ -5,7 +5,6 @@ import { VersionHistoryRepository } from '../repositories/VersionHistoryReposito
 import { regenerateGwRoutesForFrame } from './GwRouteService';
 import { newId } from '../utils/uuid';
 import { nowIso } from '../utils/dateUtils';
-import { compareVersions } from '../utils/versionUtils';
 import type {
   CommunicationDataParseResult,
   ParsedFrameGroup,
@@ -27,10 +26,9 @@ interface ReflectionContext {
   actorId: string;
 }
 
-function latestOf<T extends { versionNo: string; deleted: boolean }>(docs: T[]): T | undefined {
-  return docs
-    .filter((d) => !d.deleted)
-    .sort((a, b) => compareVersions(b.versionNo, a.versionNo))[0];
+/** 現在有効な最新版を返す（nextVersionId===null && !deletedで一意に定まる） */
+function latestOf<T extends { deleted: boolean; nextVersionId: string | null }>(docs: T[]): T | undefined {
+  return docs.find((d) => !d.deleted && d.nextVersionId === null);
 }
 
 async function recordVersionHistory(
@@ -59,11 +57,14 @@ async function recordVersionHistory(
 }
 
 async function resolveFrameDoc(row: ParsedFrameRow, ctx: ReflectionContext): Promise<Frame | null> {
-  if (!row.elementCommand) return null;
-
   const all = await frameRepo.findAllIncludingDeleted(ctx.projectId);
   const candidates = all.filter((f) => f.name === row.name && f.variantNo === row.variantNo);
   const existing = latestOf(candidates);
+
+  // コマンド空欄（変更なし）：既存のFrameをそのまま返す。子Signal行が単独でverup/追加/削除される
+  // ケースでもこのFrameのidを使って処理を継続できるようにする（Frame自身への副作用はなし）。
+  if (!row.elementCommand) return existing ?? null;
+
   const now = nowIso();
 
   if (row.elementCommand === '削除') {
@@ -77,7 +78,7 @@ async function resolveFrameDoc(row: ParsedFrameRow, ctx: ReflectionContext): Pro
     return null;
   }
 
-  const base: Omit<Frame, '_id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'deleted'> = {
+  const base: Omit<Frame, '_id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'deleted' | 'previousVersionId' | 'nextVersionId'> = {
     projectId: ctx.projectId,
     applicationId: ctx.applicationId,
     name: row.name,
@@ -109,7 +110,11 @@ async function resolveFrameDoc(row: ParsedFrameRow, ctx: ReflectionContext): Pro
 
   if (row.elementCommand === '追加') {
     if (!existing) {
-      const frame: Frame = { _id: newId('frames'), ...base, createdAt: now, createdBy: ctx.actorId, updatedAt: now, updatedBy: ctx.actorId, deleted: false };
+      const frame: Frame = {
+        _id: newId('frames'), ...base,
+        previousVersionId: null, nextVersionId: null,
+        createdAt: now, createdBy: ctx.actorId, updatedAt: now, updatedBy: ctx.actorId, deleted: false,
+      };
       await frameRepo.create(frame);
       return frame;
     }
@@ -120,8 +125,13 @@ async function resolveFrameDoc(row: ParsedFrameRow, ctx: ReflectionContext): Pro
   if (row.elementCommand === '変更(verup)') {
     if (!existing) return null; // Level1で検出済みのはずだが念のため
     await recordVersionHistory('frame', existing._id, existing.versionNo, existing, ctx);
-    const frame: Frame = { _id: newId('frames'), ...base, createdAt: now, createdBy: ctx.actorId, updatedAt: now, updatedBy: ctx.actorId, deleted: false };
+    const frame: Frame = {
+      _id: newId('frames'), ...base,
+      previousVersionId: existing._id, nextVersionId: null,
+      createdAt: now, createdBy: ctx.actorId, updatedAt: now, updatedBy: ctx.actorId, deleted: false,
+    };
     await frameRepo.create(frame);
+    await frameRepo.update(existing._id, { nextVersionId: frame._id }, ctx.actorId);
     return frame;
   }
 
@@ -147,7 +157,7 @@ async function resolveSignalDoc(row: ParsedSignalRow, frameId: string, ctx: Refl
     return null;
   }
 
-  const base: Omit<Signal, '_id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'deleted'> = {
+  const base: Omit<Signal, '_id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'deleted' | 'previousVersionId' | 'nextVersionId'> = {
     projectId: ctx.projectId,
     frameId,
     applicationId: ctx.applicationId,
@@ -168,7 +178,11 @@ async function resolveSignalDoc(row: ParsedSignalRow, frameId: string, ctx: Refl
 
   if (row.elementCommand === '追加') {
     if (!existing) {
-      const signal: Signal = { _id: newId('signals'), ...base, createdAt: now, createdBy: ctx.actorId, updatedAt: now, updatedBy: ctx.actorId, deleted: false };
+      const signal: Signal = {
+        _id: newId('signals'), ...base,
+        previousVersionId: null, nextVersionId: null,
+        createdAt: now, createdBy: ctx.actorId, updatedAt: now, updatedBy: ctx.actorId, deleted: false,
+      };
       await signalRepo.create(signal);
       return signal;
     }
@@ -178,8 +192,13 @@ async function resolveSignalDoc(row: ParsedSignalRow, frameId: string, ctx: Refl
   if (row.elementCommand === '変更(verup)') {
     if (!existing) return null;
     await recordVersionHistory('signal', existing._id, existing.versionNo, existing, ctx);
-    const signal: Signal = { _id: newId('signals'), ...base, createdAt: now, createdBy: ctx.actorId, updatedAt: now, updatedBy: ctx.actorId, deleted: false };
+    const signal: Signal = {
+      _id: newId('signals'), ...base,
+      previousVersionId: existing._id, nextVersionId: null,
+      createdAt: now, createdBy: ctx.actorId, updatedAt: now, updatedBy: ctx.actorId, deleted: false,
+    };
     await signalRepo.create(signal);
+    await signalRepo.update(existing._id, { nextVersionId: signal._id }, ctx.actorId);
     return signal;
   }
 
@@ -247,6 +266,20 @@ async function applyPortEdits(edits: PortEdit[], ctx: ReflectionContext): Promis
   }
 }
 
+/**
+ * Frameがverupされた際、この申請内で内容変更が指定されなかった（コマンド空白の）
+ * 配下Signalを新Frameのframeidへ再紐付けする。新規ドキュメントは作らず、既存
+ * Signalのframeidフィールドのみ更新する（SignalPortは同一signalIdを参照し続ける
+ * ため変更不要）。
+ */
+async function carryOverSignalToNewFrame(row: ParsedSignalRow, newFrameId: string, ctx: ReflectionContext): Promise<void> {
+  const all = await signalRepo.findAllIncludingDeleted(ctx.projectId);
+  const existing = latestOf(all.filter((s) => s.name === row.name && s.variantNo === row.variantNo));
+  if (existing && existing.frameId !== newFrameId) {
+    await signalRepo.update(existing._id, { frameId: newFrameId }, ctx.actorId);
+  }
+}
+
 async function reflectFrameGroup(group: ParsedFrameGroup, ctx: ReflectionContext): Promise<void> {
   const frame = await resolveFrameDoc(group.frame, ctx);
   const portEdits: PortEdit[] = [];
@@ -264,6 +297,12 @@ async function reflectFrameGroup(group: ParsedFrameGroup, ctx: ReflectionContext
   }
 
   for (const signalRow of group.signals) {
+    if (!signalRow.elementCommand) {
+      if (frame && group.frame.elementCommand === '変更(verup)') {
+        await carryOverSignalToNewFrame(signalRow, frame._id, ctx);
+      }
+      continue;
+    }
     const signal = frame ? await resolveSignalDoc(signalRow, frame._id, ctx) : null;
     if (!signal) continue;
     for (const cell of signalRow.trCells) {

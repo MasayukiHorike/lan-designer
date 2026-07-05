@@ -4,7 +4,6 @@ import { FrameRepository } from '../repositories/FrameRepository';
 import { BusRepository } from '../repositories/BusRepository';
 import { newId } from '../utils/uuid';
 import { nowIso } from '../utils/dateUtils';
-import { compareVersions } from '../utils/versionUtils';
 import type { Ecu, Frame, Status } from '../types/schema';
 import type { GwExceptionParseResult, ParsedTrCell } from '../types/excel';
 
@@ -21,9 +20,7 @@ function resolveBusId(ecus: Ecu[], ecuName: string, ecuVariantNo: string, connec
 }
 
 function latestFrame(frames: Frame[], name: string, variantNo: string): Frame | undefined {
-  return frames
-    .filter((f) => f.name === name && f.variantNo === variantNo && !f.deleted)
-    .sort((a, b) => compareVersions(b.versionNo, a.versionNo))[0];
+  return frames.find((f) => f.name === name && f.variantNo === variantNo && !f.deleted && f.nextVersionId === null);
 }
 
 /**

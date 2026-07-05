@@ -146,6 +146,8 @@ export interface Frame extends BaseDocument {
   powerSource: string[];
   eventFlag: boolean;
   versionNo: string;
+  previousVersionId: string | null;
+  nextVersionId: string | null;
   e2e: FrameE2eConfig;
   secoc: FrameSecocConfig;
   status: Status;
@@ -168,6 +170,8 @@ export interface Signal extends BaseDocument {
   initialValue: number;
   failValue: number;
   versionNo: string;
+  previousVersionId: string | null;
+  nextVersionId: string | null;
   status: Status;
 }
 

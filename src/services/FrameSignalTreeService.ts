@@ -74,6 +74,9 @@ export async function buildFrameSignalTree(
       }
       const frame = frameCache.get(frameId);
       if (!frame) continue;
+      // 過去断面表示（snapshotFilter指定時）は当時の状態を見せる必要があるため
+      // 現在版フィルタを適用しない（deletedと違いnextVersionIdは事後に非nullへ変わりうる）
+      if (!snapshotFilter && frame.nextVersionId !== null) continue;
       if (frame.deleted && !includeDeleted) continue;
 
       if (!signalCache.has(frameId)) {
@@ -84,6 +87,7 @@ export async function buildFrameSignalTree(
           frameId,
           signals
             .filter((s) => includeDeleted || !s.deleted)
+            .filter((s) => !!snapshotFilter || s.nextVersionId === null)
             .filter((s) => !snapshotFilter || snapshotFilter.signalIds.has(s._id))
             .map((s) => ({ id: s._id, name: s.name, deleted: s.deleted })),
         );

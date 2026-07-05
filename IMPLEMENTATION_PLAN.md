@@ -298,7 +298,7 @@ projectsレコード自体も削除
 
 ---
 
-### Phase2-2: Frame/Signalバージョン管理の是正（Issue #3・#4対応） 📝設計書反映済み・実装未着手
+### Phase2-2: Frame/Signalバージョン管理の是正（Issue #3・#4対応） ✅完了
 
 **背景**
 ```
@@ -416,35 +416,54 @@ Issue #4: FrameやSignalのバージョン関係が管理されておらず
 　表示のみ据え置き、UI拡張は別タスクとして切り出す）
 ```
 
-**実装タスク（未着手）**
+**実装タスク**
 ```
-🔲 schema.ts: Frame/Signalに
+✅ schema.ts: Frame/Signalに
 　　previousVersionId: string | null
 　　nextVersionId: string | null
 　　を追加
-🔲 CommunicationDataReflectionService.ts
-　　🔲 追加(初版)時：previousVersionId/nextVersionIdをnullで設定
-　　🔲 変更(verup)時：新ドキュメントのpreviousVersionIdに旧_idを設定
-　　🔲 変更(verup)時：旧ドキュメントのnextVersionIdに新_idを設定
+✅ CommunicationDataReflectionService.ts
+　　✅ 追加(初版)時：previousVersionId/nextVersionIdをnullで設定
+　　✅ 変更(verup)時：新ドキュメントのpreviousVersionIdに旧_idを設定
+　　✅ 変更(verup)時：旧ドキュメントのnextVersionIdに新_idを設定
 　　　　（recordVersionHistoryと同じタイミングで実施）
-　　🔲 Frame verup時の未変更子Signalのframeid再紐付け(carry-over)処理
-　　🔲 「既存」解決ロジックをnextVersionId === nullベースに変更
-🔲 読み取り側へ現在版フィルタ（nextVersionId === null）を適用
-　　🔲 FrameSignalTreeService
-　　🔲 SubsetMatrixService
-　　🔲 EcuPortMatrixService
-　　🔲 Level2CheckService
-🔲 ApplicationService.latestNonDeletedByKeyをnextVersionIdベースに簡略化
-🔲 GwRouteService.latestFrameをnextVersionIdベースに簡略化
-🔲 VersionCompareService.getPreviousFrameVersion/
+　　✅ Frame verup時の未変更子Signalのframeid再紐付け(carry-over)処理
+　　✅ 「既存」解決ロジックをnextVersionId === nullベースに変更
+✅ 読み取り側へ現在版フィルタ（nextVersionId === null）を適用
+　　✅ FrameSignalTreeService
+　　✅ SubsetMatrixService
+　　✅ EcuPortMatrixService
+　　✅ Level2CheckService
+   【実装時の重要な補足】スナップショット（過去断面）表示モードでは
+     この現在版フィルタを適用しないよう分岐した（FrameSignalTreeServiceの
+     snapshotFilter・SubsetMatrixServiceのsnapshotIds）。deletedと異なり
+     nextVersionIdは時間経過とともに非nullへ変わりうるため、無条件で
+     フィルタすると過去断面表示（当時published状態のFrame/Signal）が
+     その後の別申請でverupされた際に見えなくなってしまう。この点は
+     Playwrightでの断面互換性検証で確認済み。
+✅ ApplicationService.latestNonDeletedByKeyをnextVersionIdベースに簡略化
+✅ GwRouteService.latestFrameをnextVersionIdベースに簡略化
+✅ VersionCompareService.getPreviousFrameVersion/
 　　getPreviousSignalVersionをpreviousVersionId参照に置き換えて簡略化
 　　（compareVersionsによる全件探索ロジックを削除）
-🔲 サンプルデータ・既存投入データがある場合の整合性確認
+✅ サンプルデータ・既存投入データがある場合の整合性確認
 　　（新規投入分は自動的にnull/nullまたは正しいリンクが張られるため、
-　　開発中DBのリセットで対応可能な場合は移行処理は不要と判断）
-🔲 動作確認：verupシナリオ（Frameのみ変更／Signal追加を伴うverup／
+　　移行処理は不要と判断した通り、追加のマイグレーションは行っていない）
+✅ 動作確認：verupシナリオ（Frameのみ変更／Signal追加を伴うverup／
 　　Signal変更なしverup／3世代以上のverupを重ねた場合のリンクの
-　　繋がり）をブラウザで一通り目視確認
+　　繋がり）をブラウザで一通り確認
+
+**追加対応（調査中に発見・ユーザー確認済みの近縁バグ、まとめて修正）**
+✅ P60_Export.tsxのインポート雛形出力Frame選択ドロップダウンが
+　　`frameRepo.findByProjectId`の結果をそのまま使っており、verupで
+　　置き換わった旧バージョンのFrameも選択肢に混在していた問題を修正
+　　（`nextVersionId === null`でフィルタ）
+✅ CommunicationDataReflectionService.reflectFrameGroupにおいて、
+　　Frameコマンドが空欄（変更なし）の場合、子Signal行に「変更(verup)」
+　　コマンドが指定されていても内部でframeがnullになりSignal側の変更が
+　　静かに無視される不具合を修正（resolveFrameDocの構造変更：existing解決を
+　　関数冒頭に移動し、コマンド空欄時もnullでなく解決済みのexistingを返す
+　　ように変更）
 ```
 
 **設計書への反映**

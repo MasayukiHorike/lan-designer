@@ -192,6 +192,42 @@ src/
 
 ## データモデル重要事項
 
+### Frame/Signalのバージョン管理（Phase2-2・Issue #3/#4対応）
+
+```typescript
+// frames/signals は「変更(verup)」のたびに新しい_idで新規ドキュメントを
+// 作成する（同一_idを上書きしない。SnapshotServiceが過去のFrame/Signal _id
+// からその時点のデータをfindByIdで再構成する設計のため）。
+// 前後バージョンは自己参照リンクで管理する：
+interface VersionLink {
+  previousVersionId: string | null; // 直前バージョンの_id（初版はnull）
+  nextVersionId: string | null;     // verupで置き換えた次バージョンの_id（最新版はnull）
+}
+
+// 「現在有効な最新版かどうか」は常にこれで判定する（別途isLatestフラグは持たない）
+const isCurrent = (doc: { deleted: boolean; nextVersionId: string | null }) =>
+  !doc.deleted && doc.nextVersionId === null;
+```
+
+**【重要・実装時の禁止事項】** 「現在の設計状態」を表示・チェックする全ての
+読み取り処理（P30ツリー・P31/P60マトリクス・P40 ECU Port・Level1/Level2
+チェック・GW例外反映時のFrame解決等）は、`findByProjectId`等で取得した
+Frame/Signalに対して必ず`nextVersionId === null`（＋`!deleted`）で絞り込むこと。
+これを忘れると、verupされた旧バージョンが現行データと並行して独立表示・
+誤検出される（Issue #3/#4として実際に発生した不具合）。
+
+**ただし例外**：P50の過去断面をP30等で表示するスナップショット表示モード
+（`snapshotFilter`/`snapshotIds`引数がある場合）ではこのフィルタを適用しない。
+`deleted`と異なり`nextVersionId`は時間経過で非nullに変わりうるため、無条件で
+フィルタすると「当時published状態だったが後で別申請によりverupされた」
+Frame/Signalが過去断面から見えなくなってしまう（スナップショットは
+確定時点のframeIds/signalIdsを明示的に保持しており、それを信頼すればよい）。
+
+verup時は併せて、内容変更が指定されなかった（コマンド空白の）配下Signalの
+`frameId`を新Frameの`_id`へ再紐付けする（carry-over）こと。これを忘れると
+変更のないSignalが旧Frame配下に取り残される。実装：
+`src/services/CommunicationDataReflectionService.ts`の`carryOverSignalToNewFrame`。
+
 ### ステータス定義
 ```typescript
 type Status =

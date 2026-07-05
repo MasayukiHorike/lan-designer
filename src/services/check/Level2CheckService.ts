@@ -60,8 +60,8 @@ async function checkSubset(projectId: string, variant: Variant, ecus: Ecu[]): Pr
     busRepo.findByProjectId(projectId),
   ]);
 
-  const frames = allFrames.filter((f) => frameIds.has(f._id));
-  const signals = allSignals.filter((s) => signalIds.has(s._id));
+  const frames = allFrames.filter((f) => frameIds.has(f._id) && f.nextVersionId === null);
+  const signals = allSignals.filter((s) => signalIds.has(s._id) && s.nextVersionId === null);
   const gwRoutes = allGwRoutes.filter((r) => activeBusIds.has(r.sourceBusId) && activeBusIds.has(r.targetBusId));
 
   const errors: CheckIssue[] = [];

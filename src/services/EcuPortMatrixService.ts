@@ -88,7 +88,7 @@ export async function buildEcuPortMatrix(projectId: string, ecuIds: string[]): P
 
   const signals = (
     await Promise.all([...signalCells.keys()].map((id) => signalRepo.findById(id)))
-  ).filter((s): s is NonNullable<typeof s> => !!s && !s.deleted);
+  ).filter((s): s is NonNullable<typeof s> => !!s && !s.deleted && s.nextVersionId === null);
 
   const frameIds = new Set(frameCells.keys());
   for (const s of signals) frameIds.add(s.frameId);
@@ -96,7 +96,7 @@ export async function buildEcuPortMatrix(projectId: string, ecuIds: string[]): P
   const groups: FramePortGroup[] = [];
   for (const frameId of frameIds) {
     const frame = await frameRepo.findById(frameId);
-    if (!frame || frame.deleted) continue;
+    if (!frame || frame.deleted || frame.nextVersionId !== null) continue;
 
     const childSignals = signals
       .filter((s) => s.frameId === frameId)

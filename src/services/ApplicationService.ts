@@ -8,7 +8,6 @@ import { BusRepository } from '../repositories/BusRepository';
 import { newId } from '../utils/uuid';
 import { nowIso } from '../utils/dateUtils';
 import { generateApplicationNo } from '../utils/applicationNo';
-import { compareVersions } from '../utils/versionUtils';
 import { parseCommunicationDataWorkbook } from './excel/CommunicationDataImportService';
 import { parseGwExceptionWorkbook } from './excel/GwExceptionImportService';
 import {
@@ -32,23 +31,9 @@ const gwRouteRepo = new GwRouteRepository();
 const ecuRepo = new EcuRepository();
 const busRepo = new BusRepository();
 
-/** name+variantNo単位で「現在有効な最新バージョン」のみを残す（削除済みのみのキーは除外） */
-function latestNonDeletedByKey<T extends { name: string; variantNo: string; versionNo: string; deleted: boolean }>(
-  docs: T[],
-): T[] {
-  const groups = new Map<string, T[]>();
-  for (const d of docs) {
-    const key = `${d.name}_${d.variantNo}`;
-    const list = groups.get(key) ?? [];
-    list.push(d);
-    groups.set(key, list);
-  }
-  const result: T[] = [];
-  for (const list of groups.values()) {
-    const nonDeleted = list.filter((d) => !d.deleted).sort((a, b) => compareVersions(b.versionNo, a.versionNo));
-    if (nonDeleted.length > 0) result.push(nonDeleted[0]);
-  }
-  return result;
+/** 「現在有効な最新バージョン」のみを残す（nextVersionId===nullで一意に定まる） */
+function latestNonDeletedByKey<T extends { deleted: boolean; nextVersionId: string | null }>(docs: T[]): T[] {
+  return docs.filter((d) => !d.deleted && d.nextVersionId === null);
 }
 
 /**
